@@ -10,10 +10,13 @@ import pytest
 import questionary
 
 from fit_file_faker.config import (
+    AppType,
     Config,
     ConfigManager,
+    Profile,
     get_fitfiles_path,
     get_tpv_folder,
+    migrate_legacy_config,
 )
 
 # Import shared mock classes from conftest
@@ -578,3 +581,332 @@ class TestGetTpvFolder:
         # Should use environment variable, not ~/TPVirtual
         assert result == Path(test_path)
         assert result != Path.home() / "TPVirtual"
+
+
+# ==============================================================================
+# Phase 1: Multi-Profile Tests
+# ==============================================================================
+
+
+class TestProfile:
+    """Tests for Profile dataclass."""
+
+    def test_profile_creation(self):
+        """Test creating a Profile with all fields."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path/to/fitfiles"),
+        )
+        assert profile.name == "test"
+        assert profile.app_type == AppType.ZWIFT
+        assert profile.garmin_username == "user@example.com"
+        assert profile.garmin_password == "secret"
+        assert profile.fitfiles_path == Path("/path/to/fitfiles")
+
+    def test_profile_post_init_converts_string_app_type(self):
+        """Test that __post_init__ converts string app_type to Enum."""
+        profile = Profile(
+            name="test",
+            app_type="zwift",  # String instead of Enum
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path/to/fitfiles"),
+        )
+        assert profile.app_type == AppType.ZWIFT
+        assert isinstance(profile.app_type, AppType)
+
+    def test_profile_post_init_converts_string_path(self):
+        """Test that __post_init__ converts string fitfiles_path to Path."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path="/path/to/fitfiles",  # String instead of Path
+        )
+        assert profile.fitfiles_path == Path("/path/to/fitfiles")
+        assert isinstance(profile.fitfiles_path, Path)
+
+    def test_profile_serialization_to_dict(self):
+        """Test that Profile can be converted to dict with asdict()."""
+        from dataclasses import asdict
+
+        profile = Profile(
+            name="test",
+            app_type=AppType.TP_VIRTUAL,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path/to/fitfiles"),
+        )
+        profile_dict = asdict(profile)
+        assert profile_dict["name"] == "test"
+        assert profile_dict["app_type"] == AppType.TP_VIRTUAL
+        assert profile_dict["garmin_username"] == "user@example.com"
+
+    def test_profile_deserialization_from_dict(self):
+        """Test that Profile can be created from dict."""
+        profile_dict = {
+            "name": "test",
+            "app_type": "mywhoosh",
+            "garmin_username": "user@example.com",
+            "garmin_password": "secret",
+            "fitfiles_path": "/path/to/fitfiles",
+        }
+        profile = Profile(**profile_dict)
+        assert profile.name == "test"
+        assert profile.app_type == AppType.MYWHOOSH
+        assert profile.fitfiles_path == Path("/path/to/fitfiles")
+
+
+class TestConfigMultiProfile:
+    """Tests for Config multi-profile functionality."""
+
+    def test_config_empty_profiles(self):
+        """Test creating Config with no profiles."""
+        config = Config(profiles=[], default_profile=None)
+        assert config.profiles == []
+        assert config.default_profile is None
+
+    def test_config_with_single_profile(self):
+        """Test creating Config with single profile."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path/to/fitfiles"),
+        )
+        config = Config(profiles=[profile], default_profile="test")
+        assert len(config.profiles) == 1
+        assert config.default_profile == "test"
+
+    def test_config_get_profile_exists(self):
+        """Test getting existing profile by name."""
+        profile1 = Profile(
+            "profile1",
+            AppType.ZWIFT,
+            "user1@example.com",
+            "secret1",
+            Path("/path1"),
+        )
+        profile2 = Profile(
+            "profile2",
+            AppType.TP_VIRTUAL,
+            "user2@example.com",
+            "secret2",
+            Path("/path2"),
+        )
+        config = Config(profiles=[profile1, profile2], default_profile="profile1")
+
+        result = config.get_profile("profile2")
+        assert result is not None
+        assert result.name == "profile2"
+        assert result.app_type == AppType.TP_VIRTUAL
+
+    def test_config_get_profile_not_exists(self):
+        """Test getting non-existent profile returns None."""
+        profile = Profile(
+            "test", AppType.ZWIFT, "user@example.com", "secret", Path("/path")
+        )
+        config = Config(profiles=[profile], default_profile="test")
+
+        result = config.get_profile("nonexistent")
+        assert result is None
+
+    def test_config_get_default_profile_with_default_set(self):
+        """Test getting default profile when default_profile is set."""
+        profile1 = Profile(
+            "profile1",
+            AppType.ZWIFT,
+            "user1@example.com",
+            "secret1",
+            Path("/path1"),
+        )
+        profile2 = Profile(
+            "profile2",
+            AppType.TP_VIRTUAL,
+            "user2@example.com",
+            "secret2",
+            Path("/path2"),
+        )
+        config = Config(profiles=[profile1, profile2], default_profile="profile2")
+
+        result = config.get_default_profile()
+        assert result is not None
+        assert result.name == "profile2"
+
+    def test_config_get_default_profile_no_default_set(self):
+        """Test getting default profile when no default_profile set (returns first)."""
+        profile1 = Profile(
+            "profile1",
+            AppType.ZWIFT,
+            "user1@example.com",
+            "secret1",
+            Path("/path1"),
+        )
+        profile2 = Profile(
+            "profile2",
+            AppType.TP_VIRTUAL,
+            "user2@example.com",
+            "secret2",
+            Path("/path2"),
+        )
+        config = Config(profiles=[profile1, profile2], default_profile=None)
+
+        result = config.get_default_profile()
+        assert result is not None
+        assert result.name == "profile1"  # Should return first profile
+
+    def test_config_get_default_profile_empty(self):
+        """Test getting default profile when no profiles exist."""
+        config = Config(profiles=[], default_profile=None)
+
+        result = config.get_default_profile()
+        assert result is None
+
+    def test_config_post_init_converts_dict_profiles(self):
+        """Test that __post_init__ converts dict profiles to Profile objects."""
+        config_data = {
+            "profiles": [
+                {
+                    "name": "test",
+                    "app_type": "zwift",
+                    "garmin_username": "user@example.com",
+                    "garmin_password": "secret",
+                    "fitfiles_path": "/path/to/fitfiles",
+                }
+            ],
+            "default_profile": "test",
+        }
+        config = Config(**config_data)
+
+        assert len(config.profiles) == 1
+        assert isinstance(config.profiles[0], Profile)
+        assert config.profiles[0].name == "test"
+        assert config.profiles[0].app_type == AppType.ZWIFT
+
+
+class TestMigration:
+    """Tests for legacy config migration."""
+
+    def test_migrate_legacy_config_simple(self):
+        """Test migrating simple legacy config."""
+        legacy_config = {
+            "garmin_username": "user@example.com",
+            "garmin_password": "secret",
+            "fitfiles_path": "/path/to/fitfiles",
+        }
+
+        config = migrate_legacy_config(legacy_config)
+
+        assert len(config.profiles) == 1
+        assert config.profiles[0].name == "default"
+        assert config.profiles[0].app_type == AppType.TP_VIRTUAL
+        assert config.profiles[0].garmin_username == "user@example.com"
+        assert config.profiles[0].garmin_password == "secret"
+        assert config.profiles[0].fitfiles_path == Path("/path/to/fitfiles")
+        assert config.default_profile == "default"
+
+    def test_migrate_legacy_config_with_none_values(self):
+        """Test migrating legacy config with None values."""
+        legacy_config = {
+            "garmin_username": None,
+            "garmin_password": None,
+            "fitfiles_path": None,
+        }
+
+        config = migrate_legacy_config(legacy_config)
+
+        assert len(config.profiles) == 1
+        assert config.profiles[0].garmin_username == ""
+        assert config.profiles[0].garmin_password == ""
+        # When fitfiles_path is None, should default to Path.home()
+        assert config.profiles[0].fitfiles_path == Path.home()
+
+    def test_migrate_already_migrated_config(self):
+        """Test that already migrated config passes through unchanged."""
+        migrated_config = {
+            "profiles": [
+                {
+                    "name": "test",
+                    "app_type": "zwift",
+                    "garmin_username": "user@example.com",
+                    "garmin_password": "secret",
+                    "fitfiles_path": "/path/to/fitfiles",
+                }
+            ],
+            "default_profile": "test",
+        }
+
+        config = migrate_legacy_config(migrated_config)
+
+        assert len(config.profiles) == 1
+        assert config.profiles[0].name == "test"
+        assert config.profiles[0].app_type == AppType.ZWIFT
+        assert config.default_profile == "test"
+
+    def test_migrate_legacy_config_empty_dict(self):
+        """Test migrating empty legacy config."""
+        legacy_config = {}
+
+        config = migrate_legacy_config(legacy_config)
+
+        assert len(config.profiles) == 1
+        assert config.profiles[0].name == "default"
+        assert config.profiles[0].garmin_username == ""
+        assert config.profiles[0].garmin_password == ""
+
+    def test_migrate_legacy_config_partial(self):
+        """Test migrating legacy config with only some values set."""
+        legacy_config = {
+            "garmin_username": "user@example.com",
+            # password and fitfiles_path missing
+        }
+
+        config = migrate_legacy_config(legacy_config)
+
+        assert len(config.profiles) == 1
+        assert config.profiles[0].garmin_username == "user@example.com"
+        assert config.profiles[0].garmin_password == ""
+        assert config.profiles[0].fitfiles_path == Path.home()
+
+    def test_config_manager_loads_and_migrates_legacy(self, tmp_path, monkeypatch):
+        """Test that ConfigManager automatically migrates legacy config on load."""
+        # Create a temporary config file with legacy format
+        config_dir = tmp_path / "config"
+        config_dir.mkdir(exist_ok=True)
+        config_file = config_dir / ".config.json"
+
+        legacy_config = {
+            "garmin_username": "user@example.com",
+            "garmin_password": "secret",
+            "fitfiles_path": str(tmp_path / "fitfiles"),
+        }
+
+        with open(config_file, "w") as f:
+            json.dump(legacy_config, f)
+
+        # Mock the config directory to use our temp directory
+        from fit_file_faker.config import dirs
+
+        monkeypatch.setattr(dirs, "user_config_path", config_dir)
+
+        # Create ConfigManager - should auto-migrate
+        manager = ConfigManager()
+
+        # Verify migration occurred
+        assert len(manager.config.profiles) == 1
+        assert manager.config.profiles[0].name == "default"
+        assert manager.config.profiles[0].garmin_username == "user@example.com"
+        assert manager.config.default_profile == "default"
+
+        # Verify migrated config was saved back to file
+        with open(config_file, "r") as f:
+            saved_config = json.load(f)
+
+        assert "profiles" in saved_config
+        assert "default_profile" in saved_config
+        assert len(saved_config["profiles"]) == 1
