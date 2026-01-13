@@ -635,5 +635,199 @@ def get_tpv_folder(default_path: Path | None) -> Path:
     return Path(TPVPath)
 
 
+class ProfileManager:
+    """Manages profile CRUD operations and TUI interactions.
+
+    Provides methods for creating, reading, updating, and deleting profiles,
+    as well as interactive TUI wizards for profile management.
+
+    Attributes:
+        config_manager: Reference to the global ConfigManager instance.
+    """
+
+    def __init__(self, config_manager: ConfigManager):
+        """Initialize ProfileManager with config manager reference.
+
+        Args:
+            config_manager: The ConfigManager instance to use for persistence.
+        """
+        self.config_manager = config_manager
+
+    def create_profile(
+        self,
+        name: str,
+        app_type: AppType,
+        garmin_username: str,
+        garmin_password: str,
+        fitfiles_path: Path,
+    ) -> Profile:
+        """Create a new profile and add it to config.
+
+        Args:
+            name: Unique profile name.
+            app_type: Type of trainer application.
+            garmin_username: Garmin Connect email.
+            garmin_password: Garmin Connect password.
+            fitfiles_path: Path to FIT files directory.
+
+        Returns:
+            The newly created Profile object.
+
+        Raises:
+            ValueError: If profile name already exists.
+
+        Examples:
+            >>> manager = ProfileManager(config_manager)
+            >>> profile = manager.create_profile(
+            ...     "zwift",
+            ...     AppType.ZWIFT,
+            ...     "user@example.com",
+            ...     "secret",
+            ...     Path("/path/to/fitfiles")
+            ... )
+        """
+        # Check if profile name already exists
+        if self.config_manager.config.get_profile(name):
+            raise ValueError(f'Profile "{name}" already exists')
+
+        # Create new profile
+        profile = Profile(
+            name=name,
+            app_type=app_type,
+            garmin_username=garmin_username,
+            garmin_password=garmin_password,
+            fitfiles_path=fitfiles_path,
+        )
+
+        # Add to config and save
+        self.config_manager.config.profiles.append(profile)
+        self.config_manager.save_config()
+
+        _logger.info(f'Created profile "{name}"')
+        return profile
+
+    def get_profile(self, name: str) -> Profile | None:
+        """Get profile by name.
+
+        Args:
+            name: The profile name to retrieve.
+
+        Returns:
+            Profile object if found, None otherwise.
+        """
+        return self.config_manager.config.get_profile(name)
+
+    def list_profiles(self) -> list[Profile]:
+        """Get list of all profiles.
+
+        Returns:
+            List of all Profile objects.
+        """
+        return self.config_manager.config.profiles
+
+    def update_profile(
+        self,
+        name: str,
+        app_type: AppType | None = None,
+        garmin_username: str | None = None,
+        garmin_password: str | None = None,
+        fitfiles_path: Path | None = None,
+        new_name: str | None = None,
+    ) -> Profile:
+        """Update an existing profile.
+
+        Args:
+            name: Name of profile to update.
+            app_type: New app type (optional).
+            garmin_username: New Garmin username (optional).
+            garmin_password: New Garmin password (optional).
+            fitfiles_path: New FIT files path (optional).
+            new_name: New profile name (optional).
+
+        Returns:
+            The updated Profile object.
+
+        Raises:
+            ValueError: If profile not found or new name already exists.
+        """
+        profile = self.get_profile(name)
+        if not profile:
+            raise ValueError(f'Profile "{name}" not found')
+
+        # Check if new name conflicts
+        if new_name and new_name != name:
+            if self.get_profile(new_name):
+                raise ValueError(f'Profile "{new_name}" already exists')
+            profile.name = new_name
+
+        # Update fields if provided
+        if app_type is not None:
+            profile.app_type = app_type
+        if garmin_username is not None:
+            profile.garmin_username = garmin_username
+        if garmin_password is not None:
+            profile.garmin_password = garmin_password
+        if fitfiles_path is not None:
+            profile.fitfiles_path = fitfiles_path
+
+        # Update default_profile if name changed
+        if new_name and self.config_manager.config.default_profile == name:
+            self.config_manager.config.default_profile = new_name
+
+        self.config_manager.save_config()
+        _logger.info(f'Updated profile "{new_name or name}"')
+        return profile
+
+    def delete_profile(self, name: str) -> None:
+        """Delete a profile.
+
+        Args:
+            name: Name of profile to delete.
+
+        Raises:
+            ValueError: If profile not found or trying to delete the only profile.
+        """
+        profile = self.get_profile(name)
+        if not profile:
+            raise ValueError(f'Profile "{name}" not found')
+
+        # Prevent deleting the only profile
+        if len(self.config_manager.config.profiles) == 1:
+            raise ValueError("Cannot delete the only profile")
+
+        # Remove from profiles list
+        self.config_manager.config.profiles.remove(profile)
+
+        # Update default if we deleted the default profile
+        if self.config_manager.config.default_profile == name:
+            # Set first remaining profile as default
+            self.config_manager.config.default_profile = (
+                self.config_manager.config.profiles[0].name
+            )
+
+        self.config_manager.save_config()
+        _logger.info(f'Deleted profile "{name}"')
+
+    def set_default_profile(self, name: str) -> None:
+        """Set a profile as the default.
+
+        Args:
+            name: Name of profile to set as default.
+
+        Raises:
+            ValueError: If profile not found.
+        """
+        profile = self.get_profile(name)
+        if not profile:
+            raise ValueError(f'Profile "{name}" not found')
+
+        self.config_manager.config.default_profile = name
+        self.config_manager.save_config()
+        _logger.info(f'Set "{name}" as default profile')
+
+
 # Global configuration manager instance
 config_manager = ConfigManager()
+
+# Global profile manager instance
+profile_manager = ProfileManager(config_manager)

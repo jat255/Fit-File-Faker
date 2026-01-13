@@ -14,6 +14,7 @@ from fit_file_faker.config import (
     Config,
     ConfigManager,
     Profile,
+    ProfileManager,
     get_fitfiles_path,
     get_tpv_folder,
     migrate_legacy_config,
@@ -910,3 +911,237 @@ class TestMigration:
         assert "profiles" in saved_config
         assert "default_profile" in saved_config
         assert len(saved_config["profiles"]) == 1
+
+
+class TestProfileManager:
+    """Tests for ProfileManager CRUD operations."""
+
+    @pytest.fixture
+    def manager(self, tmp_path, monkeypatch):
+        """Create ProfileManager with temporary config."""
+        from fit_file_faker.config import dirs
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dirs, "user_config_path", config_dir)
+
+        # Create fresh config manager and profile manager
+        config_mgr = ConfigManager()
+        return ProfileManager(config_mgr)
+
+    def test_create_profile(self, manager):
+        """Test creating a new profile."""
+        profile = manager.create_profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path/to/fitfiles"),
+        )
+
+        assert profile.name == "test"
+        assert profile.app_type == AppType.ZWIFT
+        assert len(manager.list_profiles()) == 1
+
+    def test_create_duplicate_profile_raises_error(self, manager):
+        """Test that creating duplicate profile raises ValueError."""
+        manager.create_profile(
+            "test",
+            AppType.ZWIFT,
+            "user@example.com",
+            "secret",
+            Path("/path"),
+        )
+
+        with pytest.raises(ValueError, match='Profile "test" already exists'):
+            manager.create_profile(
+                "test",
+                AppType.TP_VIRTUAL,
+                "user2@example.com",
+                "secret2",
+                Path("/path2"),
+            )
+
+    def test_get_profile(self, manager):
+        """Test getting profile by name."""
+        manager.create_profile(
+            "test",
+            AppType.ZWIFT,
+            "user@example.com",
+            "secret",
+            Path("/path"),
+        )
+
+        profile = manager.get_profile("test")
+        assert profile is not None
+        assert profile.name == "test"
+
+    def test_get_nonexistent_profile(self, manager):
+        """Test getting non-existent profile returns None."""
+        assert manager.get_profile("nonexistent") is None
+
+    def test_list_profiles(self, manager):
+        """Test listing all profiles."""
+        manager.create_profile(
+            "profile1",
+            AppType.ZWIFT,
+            "user1@example.com",
+            "secret1",
+            Path("/path1"),
+        )
+        manager.create_profile(
+            "profile2",
+            AppType.TP_VIRTUAL,
+            "user2@example.com",
+            "secret2",
+            Path("/path2"),
+        )
+
+        profiles = manager.list_profiles()
+        assert len(profiles) == 2
+        assert profiles[0].name == "profile1"
+        assert profiles[1].name == "profile2"
+
+    def test_update_profile_username(self, manager):
+        """Test updating profile username."""
+        manager.create_profile(
+            "test",
+            AppType.ZWIFT,
+            "old@example.com",
+            "secret",
+            Path("/path"),
+        )
+
+        manager.update_profile("test", garmin_username="new@example.com")
+
+        profile = manager.get_profile("test")
+        assert profile.garmin_username == "new@example.com"
+
+    def test_update_profile_name(self, manager):
+        """Test renaming a profile."""
+        manager.create_profile(
+            "oldname",
+            AppType.ZWIFT,
+            "user@example.com",
+            "secret",
+            Path("/path"),
+        )
+
+        manager.update_profile("oldname", new_name="newname")
+
+        assert manager.get_profile("oldname") is None
+        assert manager.get_profile("newname") is not None
+
+    def test_update_nonexistent_profile_raises_error(self, manager):
+        """Test updating non-existent profile raises ValueError."""
+        with pytest.raises(ValueError, match='Profile "nonexistent" not found'):
+            manager.update_profile("nonexistent", garmin_username="user@example.com")
+
+    def test_update_profile_to_existing_name_raises_error(self, manager):
+        """Test renaming to existing name raises ValueError."""
+        manager.create_profile(
+            "profile1",
+            AppType.ZWIFT,
+            "user1@example.com",
+            "secret1",
+            Path("/path1"),
+        )
+        manager.create_profile(
+            "profile2",
+            AppType.TP_VIRTUAL,
+            "user2@example.com",
+            "secret2",
+            Path("/path2"),
+        )
+
+        with pytest.raises(ValueError, match='Profile "profile2" already exists'):
+            manager.update_profile("profile1", new_name="profile2")
+
+    def test_delete_profile(self, manager):
+        """Test deleting a profile."""
+        manager.create_profile(
+            "profile1",
+            AppType.ZWIFT,
+            "user1@example.com",
+            "secret1",
+            Path("/path1"),
+        )
+        manager.create_profile(
+            "profile2",
+            AppType.TP_VIRTUAL,
+            "user2@example.com",
+            "secret2",
+            Path("/path2"),
+        )
+
+        manager.delete_profile("profile1")
+
+        assert manager.get_profile("profile1") is None
+        assert len(manager.list_profiles()) == 1
+
+    def test_delete_only_profile_raises_error(self, manager):
+        """Test deleting the only profile raises ValueError."""
+        manager.create_profile(
+            "test",
+            AppType.ZWIFT,
+            "user@example.com",
+            "secret",
+            Path("/path"),
+        )
+
+        with pytest.raises(ValueError, match="Cannot delete the only profile"):
+            manager.delete_profile("test")
+
+    def test_delete_nonexistent_profile_raises_error(self, manager):
+        """Test deleting non-existent profile raises ValueError."""
+        with pytest.raises(ValueError, match='Profile "nonexistent" not found'):
+            manager.delete_profile("nonexistent")
+
+    def test_delete_default_profile_updates_default(self, manager):
+        """Test deleting default profile sets new default."""
+        manager.create_profile(
+            "profile1",
+            AppType.ZWIFT,
+            "user1@example.com",
+            "secret1",
+            Path("/path1"),
+        )
+        manager.create_profile(
+            "profile2",
+            AppType.TP_VIRTUAL,
+            "user2@example.com",
+            "secret2",
+            Path("/path2"),
+        )
+        manager.set_default_profile("profile1")
+
+        manager.delete_profile("profile1")
+
+        # Should auto-set first remaining profile as default
+        assert manager.config_manager.config.default_profile == "profile2"
+
+    def test_set_default_profile(self, manager):
+        """Test setting default profile."""
+        manager.create_profile(
+            "profile1",
+            AppType.ZWIFT,
+            "user1@example.com",
+            "secret1",
+            Path("/path1"),
+        )
+        manager.create_profile(
+            "profile2",
+            AppType.TP_VIRTUAL,
+            "user2@example.com",
+            "secret2",
+            Path("/path2"),
+        )
+
+        manager.set_default_profile("profile2")
+
+        assert manager.config_manager.config.default_profile == "profile2"
+
+    def test_set_nonexistent_default_raises_error(self, manager):
+        """Test setting non-existent profile as default raises ValueError."""
+        with pytest.raises(ValueError, match='Profile "nonexistent" not found'):
+            manager.set_default_profile("nonexistent")

@@ -21,6 +21,73 @@ Refactor Fit File Faker's configuration system from single-profile to multi-prof
 
 ---
 
+## 🎯 Implementation Status
+
+**Last Updated:** 2026-01-12
+
+### ✅ Phase 1: Core Data Structures (COMPLETED)
+**Commit:** `34b78cd` - feat(config): add multi-profile data structures and migration
+
+**Deliverables:**
+- ✅ AppType enum added (TP_VIRTUAL, ZWIFT, MYWHOOSH, CUSTOM)
+- ✅ Profile dataclass implemented with __post_init__ conversions
+- ✅ Config dataclass refactored for multi-profile support
+- ✅ migrate_legacy_config() function for v1.2.4 compatibility
+- ✅ ConfigManager._load_config() auto-migrates legacy configs
+- ✅ PathEncoder updated to handle Enum serialization
+- ✅ Config.get_profile() and get_default_profile() methods added
+- ✅ 19 comprehensive tests (TestProfile, TestConfigMultiProfile, TestMigration)
+
+**Test Results:** 19/19 passing ✅
+
+### ✅ Phase 2: App Registry & Detection (COMPLETED)
+**Commit:** `6fa0634` - feat(config): add app registry with detector classes
+
+**Deliverables:**
+- ✅ app_registry.py module created with AppDetector ABC
+- ✅ TPVDetector implemented (reuses existing get_tpv_folder logic)
+- ✅ ZwiftDetector implemented (macOS/Windows/Linux with Wine/Proton)
+- ✅ MyWhooshDetector implemented (container and package scanning)
+- ✅ CustomDetector implemented (manual path specification)
+- ✅ APP_REGISTRY dictionary and get_detector() factory function
+- ✅ Platform-specific directory auto-detection for all apps
+- ✅ 28 comprehensive tests (all detector classes + registry)
+
+**Test Results:** 28/28 passing ✅
+
+### 🚧 Phase 3: Profile Management TUI (IN PROGRESS)
+**Status:** Not started
+**Estimated:** 3 days
+
+**Remaining Tasks:**
+- [ ] Create ProfileManager class with CRUD methods
+- [ ] Implement Rich table display for profile list
+- [ ] Implement Questionary-based menu system
+- [ ] Create profile creation wizard (app-first flow)
+- [ ] Create profile edit wizard
+- [ ] Create profile deletion with confirmation
+- [ ] Create set-default-profile wizard
+- [ ] Refactor build_config_file() to use new TUI
+- [ ] Add ~33 tests for ProfileManager
+
+### 📋 Phase 4: Multi-Profile CLI Integration (PENDING)
+**Status:** Not started
+**Estimated:** 2 days
+
+### 📋 Phase 5: Documentation & Polish (PENDING)
+**Status:** Not started
+**Estimated:** 2 days
+
+### 📋 Phase 6: Testing & Validation (PENDING)
+**Status:** Not started
+**Estimated:** 2 days
+
+**Overall Progress:** 2/6 phases complete (33%)
+**Total Tests Added:** 47/146 (32%)
+**Current Branch:** `feat/config_refactor`
+
+---
+
 ## Architecture Overview
 
 ### New Data Structure
@@ -83,7 +150,7 @@ Config(
 
 ## Implementation Phases
 
-### Phase 1: Core Data Structures (Est. 2 days)
+### Phase 1: Core Data Structures ✅ (COMPLETED)
 
 **Objectives:**
 - Add `AppType` enum to `config.py`
@@ -136,7 +203,7 @@ Config(
 
 ---
 
-### Phase 2: App Registry & Detection (Est. 2 days)
+### Phase 2: App Registry & Detection ✅ (COMPLETED)
 
 **Objectives:**
 - Create new `app_registry.py` module
