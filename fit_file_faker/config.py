@@ -37,6 +37,8 @@ from typing import cast
 
 import questionary
 from platformdirs import PlatformDirs
+from rich.console import Console
+from rich.table import Table
 
 _logger = logging.getLogger("garmin")
 
@@ -824,6 +826,310 @@ class ProfileManager:
         self.config_manager.config.default_profile = name
         self.config_manager.save_config()
         _logger.info(f'Set "{name}" as default profile')
+
+    def display_profiles_table(self) -> None:
+        """Display all profiles in a Rich table.
+
+        Shows profile name, app type, Garmin username, and FIT files path
+        in a formatted table. Marks the default profile with ⭐.
+        """
+        console = Console()
+        table = Table(
+            title="📋 FIT File Faker - Profiles",
+            show_header=True,
+            header_style="bold cyan",
+        )
+
+        table.add_column("Name", style="green", no_wrap=True)
+        table.add_column("App", style="blue")
+        table.add_column("Garmin User", style="yellow")
+        table.add_column("FIT Path", style="magenta")
+
+        profiles = self.list_profiles()
+        if not profiles:
+            console.print("[yellow]No profiles configured yet.[/yellow]")
+            return
+
+        for profile in profiles:
+            # Mark default profile with star
+            name_display = profile.name
+            if profile.name == self.config_manager.config.default_profile:
+                name_display = f"{profile.name} ⭐"
+
+            # Format app type for display
+            app_display = profile.app_type.value.replace("_", " ").title()
+
+            # Truncate long paths
+            path_str = str(profile.fitfiles_path)
+            if len(path_str) > 40:
+                path_str = "..." + path_str[-37:]
+
+            table.add_row(name_display, app_display, profile.garmin_username, path_str)
+
+        console.print(table)
+
+    def interactive_menu(self) -> None:
+        """Display interactive profile management menu.
+
+        Shows profile table and presents menu options for creating,
+        editing, deleting profiles, and setting default.
+        """
+        while True:
+            console = Console()
+            console.print()  # Blank line
+            self.display_profiles_table()
+            console.print()  # Blank line
+
+            choices = [
+                "Create new profile",
+                "Edit existing profile",
+                "Delete profile",
+                "Set default profile",
+                "Exit",
+            ]
+
+            action = questionary.select(
+                "What would you like to do?",
+                choices=choices,
+                style=questionary.Style([("highlighted", "fg:cyan bold")]),
+            ).ask()
+
+            if not action or action == "Exit":
+                break
+
+            try:
+                if action == "Create new profile":
+                    self.create_profile_wizard()
+                elif action == "Edit existing profile":
+                    self.edit_profile_wizard()
+                elif action == "Delete profile":
+                    self.delete_profile_wizard()
+                elif action == "Set default profile":
+                    self.set_default_wizard()
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[yellow]Operation cancelled.[/yellow]")
+                continue
+
+    def create_profile_wizard(self) -> Profile | None:
+        """Interactive wizard for creating a new profile.
+
+        Follows app-first flow:
+        1. Select app type
+        2. Auto-detect directory (with confirm/override)
+        3. Enter Garmin credentials
+        4. Enter profile name
+
+        Returns:
+            The newly created Profile, or None if cancelled.
+        """
+        from fit_file_faker.app_registry import get_detector
+
+        console = Console()
+        console.print("\n[bold cyan]Create New Profile[/bold cyan]")
+
+        # Step 1: Select app type
+        app_choices = [
+            questionary.Choice("TrainingPeaks Virtual", AppType.TP_VIRTUAL),
+            questionary.Choice("Zwift", AppType.ZWIFT),
+            questionary.Choice("MyWhoosh", AppType.MYWHOOSH),
+            questionary.Choice("Custom (manual path)", AppType.CUSTOM),
+        ]
+
+        app_type = questionary.select(
+            "Which trainer app will this profile use?", choices=app_choices
+        ).ask()
+
+        if not app_type:
+            return None
+
+        # Step 2: Directory detection
+        detector = get_detector(app_type)
+        suggested_path = detector.get_default_path()
+
+        if suggested_path:
+            console.print(
+                f"\n[green]✓ Found {detector.get_display_name()} directory:[/green]"
+            )
+            console.print(f"  {suggested_path}")
+            use_detected = questionary.confirm(
+                "Use this directory?", default=True
+            ).ask()
+
+            if use_detected:
+                fitfiles_path = suggested_path
+            else:
+                path_input = questionary.path("Enter FIT files directory path:").ask()
+                if not path_input:
+                    return None
+                fitfiles_path = Path(path_input)
+        else:
+            console.print(
+                f"\n[yellow]Could not auto-detect {detector.get_display_name()} directory[/yellow]"
+            )
+            path_input = questionary.path("Enter FIT files directory path:").ask()
+            if not path_input:
+                return None
+            fitfiles_path = Path(path_input)
+
+        # Step 3: Garmin credentials
+        garmin_username = questionary.text(
+            "Enter Garmin Connect email:", validate=lambda x: len(x) > 0
+        ).ask()
+        if not garmin_username:
+            return None
+
+        garmin_password = questionary.password(
+            "Enter Garmin Connect password:", validate=lambda x: len(x) > 0
+        ).ask()
+        if not garmin_password:
+            return None
+
+        # Step 4: Profile name
+        suggested_name = app_type.value.split("_")[0].lower()
+        profile_name = questionary.text(
+            "Enter profile name:", default=suggested_name, validate=lambda x: len(x) > 0
+        ).ask()
+        if not profile_name:
+            return None
+
+        # Create the profile
+        try:
+            profile = self.create_profile(
+                name=profile_name,
+                app_type=app_type,
+                garmin_username=garmin_username,
+                garmin_password=garmin_password,
+                fitfiles_path=fitfiles_path,
+            )
+            console.print(
+                f"\n[green]✓ Profile '{profile_name}' created successfully![/green]"
+            )
+            return profile
+        except ValueError as e:
+            console.print(f"\n[red]✗ Error: {e}[/red]")
+            return None
+
+    def edit_profile_wizard(self) -> None:
+        """Interactive wizard for editing an existing profile."""
+        console = Console()
+
+        profiles = self.list_profiles()
+        if not profiles:
+            console.print("[yellow]No profiles to edit.[/yellow]")
+            return
+
+        # Select profile to edit
+        profile_choices = [p.name for p in profiles]
+        profile_name = questionary.select(
+            "Select profile to edit:", choices=profile_choices
+        ).ask()
+
+        if not profile_name:
+            return
+
+        profile = self.get_profile(profile_name)
+        if not profile:
+            return
+
+        console.print(f"\n[bold cyan]Editing Profile: {profile_name}[/bold cyan]")
+        console.print("[dim]Leave blank to keep current value[/dim]\n")
+
+        # Ask which fields to update
+        new_name = questionary.text(f"Profile name [{profile.name}]:", default="").ask()
+
+        new_username = questionary.text(
+            f"Garmin username [{profile.garmin_username}]:", default=""
+        ).ask()
+
+        new_password = questionary.password("Garmin password [****]:", default="").ask()
+
+        new_path = questionary.path(
+            f"FIT files path [{profile.fitfiles_path}]:", default=""
+        ).ask()
+
+        # Update profile with provided values
+        try:
+            self.update_profile(
+                name=profile_name,
+                new_name=new_name if new_name else None,
+                garmin_username=new_username if new_username else None,
+                garmin_password=new_password if new_password else None,
+                fitfiles_path=Path(new_path) if new_path else None,
+            )
+            console.print("\n[green]✓ Profile updated successfully![/green]")
+        except ValueError as e:
+            console.print(f"\n[red]✗ Error: {e}[/red]")
+
+    def delete_profile_wizard(self) -> None:
+        """Interactive wizard for deleting a profile with confirmation."""
+        console = Console()
+
+        profiles = self.list_profiles()
+        if not profiles:
+            console.print("[yellow]No profiles to delete.[/yellow]")
+            return
+
+        if len(profiles) == 1:
+            console.print("[yellow]Cannot delete the only profile.[/yellow]")
+            return
+
+        # Select profile to delete
+        profile_choices = [p.name for p in profiles]
+        profile_name = questionary.select(
+            "Select profile to delete:", choices=profile_choices
+        ).ask()
+
+        if not profile_name:
+            return
+
+        # Confirm deletion
+        confirm = questionary.confirm(
+            f'Are you sure you want to delete profile "{profile_name}"?',
+            default=False,
+        ).ask()
+
+        if not confirm:
+            console.print("[yellow]Deletion cancelled.[/yellow]")
+            return
+
+        # Delete the profile
+        try:
+            self.delete_profile(profile_name)
+            console.print(
+                f"\n[green]✓ Profile '{profile_name}' deleted successfully![/green]"
+            )
+        except ValueError as e:
+            console.print(f"\n[red]✗ Error: {e}[/red]")
+
+    def set_default_wizard(self) -> None:
+        """Interactive wizard for setting the default profile."""
+        console = Console()
+
+        profiles = self.list_profiles()
+        if not profiles:
+            console.print("[yellow]No profiles available.[/yellow]")
+            return
+
+        # Select profile to set as default
+        profile_choices = [p.name for p in profiles]
+        current_default = self.config_manager.config.default_profile
+
+        profile_name = questionary.select(
+            f"Select default profile (current: {current_default}):",
+            choices=profile_choices,
+        ).ask()
+
+        if not profile_name:
+            return
+
+        # Set as default
+        try:
+            self.set_default_profile(profile_name)
+            console.print(
+                f"\n[green]✓ '{profile_name}' is now the default profile![/green]"
+            )
+        except ValueError as e:
+            console.print(f"\n[red]✗ Error: {e}[/red]")
 
 
 # Global configuration manager instance
