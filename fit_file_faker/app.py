@@ -38,7 +38,11 @@ import semver
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.traceback import install
-from watchdog.events import PatternMatchingEventHandler, FileCreatedEvent
+from watchdog.events import (
+    PatternMatchingEventHandler,
+    FileCreatedEvent,
+    FileModifiedEvent,
+)
 from watchdog.observers.polling import PollingObserver as Observer
 
 _logger = logging.getLogger("garmin")
@@ -71,6 +75,10 @@ class NewFileEventHandler(PatternMatchingEventHandler):
 
     Extends watchdog's PatternMatchingEventHandler to automatically process
     and upload new FIT files as they're created in the monitored directory.
+    Also handles file modification events for MyWhoosh files that follow the
+    pattern "MyNewActivity-*.fit", as MyWhoosh overwrites the same file on
+    completion rather than creating a new file.
+
     Includes a 5-second delay to ensure the file is fully written before processing.
 
     Attributes:
@@ -94,7 +102,9 @@ class NewFileEventHandler(PatternMatchingEventHandler):
         """
         _logger.debug(f"Creating NewFileEventHandler with {dryrun=}")
         super().__init__(
-            patterns=["*.fit"], ignore_directories=True, case_sensitive=False
+            patterns=["*.fit", "MyNewActivity-*.fit"],
+            ignore_directories=True,
+            case_sensitive=False,
         )
         self.dryrun = dryrun
 
@@ -131,6 +141,52 @@ class NewFileEventHandler(PatternMatchingEventHandler):
             _logger.warning(
                 "Found new file, but not processing because dryrun was requested"
             )
+
+    def on_modified(self, event: FileModifiedEvent) -> None:
+        """Handle file modification events.
+
+        Called by watchdog when a `.fit` file is modified in the monitored
+        directory. This is specifically useful for MyWhoosh files that follow
+        the pattern "MyNewActivity-*.fit", as MyWhoosh overwrites the same file
+        on completion rather than creating a new file.
+
+        Args:
+            event: The file system event containing the path to the modified file.
+
+        Note:
+            Waits 5 seconds to ensure the file is fully written, similar to
+            the creation event handler. This handles the case where MyWhoosh
+            overwrites existing files. Only processes the specific modified file
+            rather than all files in the directory.
+        """
+        # Only process MyWhoosh files that match the pattern
+        if "MyNewActivity-" in event.src_path:
+            _logger.info(
+                f'File modified detected - "{event.src_path}"; sleeping for 5 seconds '
+                "to ensure MyWhoosh finishes writing file"
+            )
+            if not self.dryrun:
+                # Wait for a short time to make sure MyWhoosh has finished writing to the file
+                time.sleep(5)
+                # Process only the modified file
+                p = event.src_path
+                if isinstance(p, bytes):
+                    p = p.decode()  # pragma: no cover
+                p = cast(str, p)
+                modified_file = Path(p).absolute()
+
+                # Edit the file and upload it
+                with NamedTemporaryFile(delete=True, delete_on_close=False) as fp:
+                    output = fit_editor.edit_fit(modified_file, output=Path(fp.name))
+                    if output:
+                        _logger.info(
+                            f"Uploading modified file ({output}) to Garmin Connect"
+                        )
+                        upload(output, original_path=modified_file, dryrun=self.dryrun)
+            else:
+                _logger.warning(
+                    "Found modified file, but not processing because dryrun was requested"
+                )
 
 
 def upload(fn: Path, original_path: Optional[Path] = None, dryrun: bool = False):
