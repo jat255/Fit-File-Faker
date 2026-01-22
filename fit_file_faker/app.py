@@ -573,7 +573,7 @@ def run():
     parser.add_argument(
         "-s",
         "--initial-setup",
-        help="Use this option to interactively initialize the configuration file (.config.json)",
+        help="Launch the interactive profile management menu (alias for --config-menu)",
         action="store_true",
     )
     parser.add_argument(
@@ -650,15 +650,10 @@ def run():
         ]:
             logging.getLogger(logger).setLevel(logging.WARNING)
 
-    # if initial_setup, just do config file building
+    # Handle --initial-setup (now an alias for --config-menu)
     if args.initial_setup:
-        config_manager.build_config_file(
-            overwrite_existing_vals=True, rewrite_config=True
-        )
-        _logger.info(
-            f'Config file has been written to "{config_manager.get_config_file_path()}", now run one of the other options to '
-            "start editing/uploading files!"
-        )
+        _logger.info("Launching profile management menu...")
+        profile_manager.interactive_menu()
         sys.exit(0)
 
     # Handle --list-profiles
