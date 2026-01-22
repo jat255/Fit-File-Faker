@@ -109,9 +109,50 @@ This tool works cross-platform on **Windows**, **macOS**, and **Linux** (primari
 
 ## Configuration
 
-The script uses a configuration file named `.config.json` stored in your system's user config directory (as determined by the [`platformdirs`](https://github.com/tox-dev/platformdirs) library).
+As of version 2.0.0, FIT File Faker now supports **multi-profile configuration**, allowing you to manage multiple Garmin accounts and trainer apps. See the [Multi-Profile Guide](profiles.md) for comprehensive documentation.
 
-Example configuration:
+### Multi-Profile Format
+
+```json
+{
+  "profiles": [
+    {
+      "name": "tpv",
+      "app_type": "tp_virtual",
+      "garmin_username": "user@work.com",
+      "garmin_password": "secret123",
+      "fitfiles_path": "/Users/josh/TPVirtual/abc123/FITFiles"
+    },
+    {
+      "name": "zwift",
+      "app_type": "zwift",
+      "garmin_username": "personal@gmail.com",
+      "garmin_password": "secret456",
+      "fitfiles_path": "/Users/josh/Documents/Zwift/Activities"
+    }
+  ],
+  "default_profile": "tpv"
+}
+```
+
+!!! tip "Profile Management"
+    Use the interactive profile manager to create and manage profiles:
+
+    ```bash
+    fit-file-faker --config-menu
+    ```
+
+    This supports:
+    
+    - **Multiple Garmin accounts** with isolated credentials
+    - **Multiple trainer apps** (TPV, Zwift, MyWhoosh)
+    - **Auto-detection** of FIT file directories
+    - **Profile-specific monitoring** and uploads
+
+
+### Single Profile (Legacy Format)
+
+For backward compatibility, the tool still supports the legacy single-profile format:
 
 ```json
 {
@@ -121,40 +162,19 @@ Example configuration:
 }
 ```
 
-!!! tip "Initial Setup"
-    The best way to create your config file is to run the interactive setup with the `-s` flag:
+!!! warning "Automatic Migration"
+    When you first run v2.0.0+, legacy configs are automatically migrated to the multi-profile format with a "default" profile.
 
-    ```bash
-    fit-file-faker -s
-    ```
 
-    This will prompt you for:
+### Initial Setup (Legacy)
 
-    - Garmin username
-    - Garmin password
-    - TrainingPeaks Virtual data folder (auto-detected on Windows/macOS)
-
-Example setup session:
+The `-s` flag still works for backward compatibility but now launches the profile manager:
 
 ```bash
-$ fit-file-faker -s
-
-[16:02:04] WARNING  Required value "garmin_username" not found in config                                                                                                                            config.py:106
-? Enter value to use for "garmin_username" jat255
-[16:02:06] WARNING  Required value "garmin_password" not found in config                                                                                                                            config.py:106
-? Enter value to use for "garmin_password" ************
-[16:02:09] WARNING  Required value "fitfiles_path" not found in config                                                                                                                              config.py:106
-           INFO     Getting FITFiles folder                                                                                                                                                         config.py:169
-? Found TP Virtual User directory at "/Users/user/TPVirtual/1234567890abcdef", is this correct?  yes
-[16:02:17] INFO     Found TP Virtual User directory: "/Users/user/TPVirtual/1234567890abcdef", setting "fitfiles_path" in config file                                                               config.py:196
-           INFO     Config file is now:                                                                                                                                                             config.py:155
-                    {
-                      "garmin_username": "username",
-                      "garmin_password": "<**hidden**>",
-                      "fitfiles_path": "/Users/user/TPVirtual/1234567890abcdef/FITFiles"
-                    }
-           INFO     Config file has been written to "/Users/user/Library/Application Support/FitFileFaker/.config.json", now run one of the other options to start editing/uploading files!            app.py:289
+fit-file-faker -s
 ```
+
+For new users, it's recommended to use `--config-menu` for the full multi-profile experience.
 
 ## Usage
 
@@ -167,7 +187,7 @@ fit-file-faker -h
 ```
 
 ```
-usage: fit-file-faker [-h] [-s] [-u] [-ua] [-p] [-m] [-d] [-v] [input_path]
+usage: fit-file-faker [-h] [-s] [--profile PROFILE] [--list-profiles] [--config-menu] [-u] [-ua] [-p] [-m] [-d] [-v] [input_path]
 
 Tool to add Garmin device information to FIT files and upload them to Garmin Connect. Currently, only FIT files produced by TrainingPeaks Virtual (https://www.trainingpeaks.com/virtual/) and Zwift
 (https://www.zwift.com/) are supported, but it's possible others may work.
@@ -178,7 +198,10 @@ positional arguments:
 
 options:
   -h, --help           show this help message and exit
-  -s, --initial-setup  Use this option to interactively initialize the configuration file (.config.json)
+  -s, --initial-setup  Launch the interactive profile management menu (alias for --config-menu)
+  --profile PROFILE    specify which profile to use (if not specified, uses default profile)
+  --list-profiles      list all available profiles and exit
+  --config-menu        launch the interactive profile management menu
   -u, --upload         upload FIT file (after editing) to Garmin Connect
   -ua, --upload-all    upload all FIT files in directory (if they are not in "already processed" list)
   -p, --preinitialize  preinitialize the list of processed FIT files (mark all existing files in directory as already uploaded)
@@ -199,21 +222,37 @@ If a directory is supplied rather than a single file, all FIT files in that dire
 
 ### Upload to Garmin Connect
 
-Supplying the `-u` option will attempt to upload the edited file to Garmin Connect. If your credentials are not stored in the configuration file, the script will prompt you for them.
+### Multi-Profile Usage
 
-The OAuth credentials obtained for the Garmin web service will be stored in a directory named `.garth` in your system's user cache folder (as determined by [`platformdirs`](https://github.com/tox-dev/platformdirs)). See the `garth` library's [documentation](https://github.com/matin/garth/?tab=readme-ov-file#authentication-and-stability) for details.
+FIT File Faker v2.0.0+ supports multiple profiles for different Garmin accounts and trainer apps.
+
+#### Profile Selection
 
 ```bash
-fit-file-faker -u path_to_file.fit
+# Use a specific profile
+fit-file-faker --profile zwift -ua
+fit-file-faker -p tpv -u ride.fit
+
+# List all profiles
+fit-file-faker --list-profiles
+
+# Launch interactive profile manager
+fit-file-faker --config-menu
 ```
 
-Example output:
+#### Profile Selection Priority
 
-```
-[12:14:06] INFO     Activity timestamp is "2024-05-21T17:15:48"                              app.py:84
-           INFO     Saving modified data to path_to_file_modified.fit                        app.py:106
-[12:14:08] INFO     ✅ Successfully uploaded "path_to_file.fit"                              app.py:137
-```
+1. Explicit `--profile` argument
+2. Default profile (marked with ⭐)
+3. Interactive prompt (if multiple profiles exist)
+4. Error if no profiles configured
+
+#### Credential Isolation
+
+Each profile has isolated Garmin credentials stored in profile-specific directories:
+- `.garth_tpv/` for TPV profile
+- `.garth_zwift/` for Zwift profile
+- etc.
 
 ### Verbose Output
 

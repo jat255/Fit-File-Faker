@@ -77,6 +77,17 @@ fit_file_faker/
 
 **Entry Point**: `fit_file_faker.app:run` (defined in `pyproject.toml`)
 
+**Updated Package Structure** (with multi-profile support):
+```
+fit_file_faker/
+├── __init__.py           # Package initialization (1 line)
+├── app.py                # Main application, CLI, uploads, monitoring (550 lines)
+├── app_registry.py       # NEW: Trainer app detection system (305 lines)
+├── config.py             # Configuration management (750 lines)
+├── fit_editor.py         # FIT file editing core logic (313 lines)
+└── utils.py              # Utility functions and monkey patches (103 lines)
+```
+
 ### Core Workflow
 1. **Read FIT file**: Uses the `fit_tool` library to parse binary FIT files
 2. **Apply fit_tool patch**: Applies monkey patch from `utils.py` to handle malformed FIT files (e.g., COROS)
@@ -88,11 +99,17 @@ fit_file_faker/
 ### Module Breakdown
 
 **`config.py` - Configuration Management**
-- `Config` dataclass: Holds `garmin_username`, `garmin_password`, `fitfiles_path`
-- `ConfigManager`: Handles config file I/O, validation, and interactive building
+- **Multi-Profile Architecture**: Supports multiple profiles with different Garmin accounts and trainer apps
+- `AppType` enum: TP_VIRTUAL, ZWIFT, MYWHOOSH, CUSTOM for trainer app types
+- `Profile` dataclass: Holds profile-specific settings (name, app_type, credentials, fitfiles_path)
+- `Config` dataclass: Contains `profiles: list[Profile]` and `default_profile: str | None`
+- `ConfigManager`: Handles config file I/O, validation, auto-migration from v1.2.4 format
+- `ProfileManager`: CRUD operations for profile management (create, read, update, delete, set_default)
+- `migrate_legacy_config()`: Auto-converts single-profile configs to multi-profile format
+- `get_garth_dir(profile_name)`: Profile-specific credential isolation
 - Stored in platform-specific user config directory (via `platformdirs`) as `.config.json`
-- `get_fitfiles_path()`: Auto-detects TrainingPeaks Virtual directories
-- `get_tpv_folder()`: Platform-specific TPV directory detection
+- **Auto-detection**: Platform-specific directory detection for TPV, Zwift, MyWhoosh via `app_registry.py`
+- **TUI**: Rich-based interactive menu system for profile management
 
 **`fit_editor.py` - FIT File Editing**
 - `FitEditor` class: Main editor with logging filter for fit_tool warnings
@@ -103,13 +120,25 @@ fit_file_faker/
 - Preserves activity data (records, laps, sessions) - only modifies device metadata
 - Special handling for Activity messages (reordered to end for COROS compatibility)
 
+**`app_registry.py` - Trainer App Detection**
+- `AppDetector` ABC: Abstract base class for trainer app detection
+- `TPVDetector`: TrainingPeaks Virtual directory detection (macOS/Windows/Linux)
+- `ZwiftDetector`: Zwift activities directory detection (macOS/Windows/Linux with Wine/Proton)
+- `MyWhooshDetector`: MyWhoosh data directory detection (macOS container, Windows package scanning)
+- `CustomDetector`: Manual path specification for unsupported apps
+- `APP_REGISTRY`: Dictionary mapping `AppType` → detector class
+- `get_detector(app_type)`: Factory function for detector instances
+- Platform-specific auto-detection with graceful fallbacks to user prompts
+
 **`app.py` - Main Application**
 - CLI argument parsing and validation
-- `upload()`: Garmin Connect upload with OAuth authentication via `garth`
-- `upload_all()`: Batch processes all FIT files in a directory
-- `monitor()`: Watches directory for new FIT files using `watchdog`
-- `NewFileEventHandler`: Event handler for monitoring mode
-- Credentials cached in platform-specific cache directory (`.garth` folder)
+- **Multi-Profile Support**: `--profile/-p`, `--list-profiles`, `--config-menu` arguments
+- `select_profile()`: Profile selection logic (arg → default → prompt)
+- `upload()`: Garmin Connect upload with OAuth authentication via `garth` (now accepts `Profile` parameter)
+- `upload_all()`: Batch processes all FIT files in a directory (profile-aware)
+- `monitor()`: Watches directory for new FIT files using `watchdog` (profile-specific)
+- `NewFileEventHandler`: Event handler for monitoring mode (uses profile)
+- Credentials cached in profile-specific cache directories (`.garth_{profile_name}` folders)
 - Handles HTTP 409 conflicts (duplicate activities) gracefully
 - Maintains `.uploaded_files.json` to track processed files
 
@@ -119,14 +148,39 @@ fit_file_faker/
 - `fit_crc_get16()`: FIT file CRC-16 checksum calculation
 - Required for COROS and other manufacturers with non-standard FIT files
 
+### Multi-Profile Workflow
+
+**Profile Selection Priority**:
+1. `--profile/-p` CLI argument (explicit selection)
+2. `default_profile` from config (if set)
+3. Interactive prompt (if multiple profiles exist)
+4. Error if no profiles configured
+
+**Profile Management Commands**:
+- `fit-file-faker --config-menu`: Launch interactive TUI for profile CRUD operations
+- `fit-file-faker --list-profiles`: Display all configured profiles
+- `fit-file-faker --profile <name> <command>`: Execute command with specific profile
+
+**Profile Creation Wizard** (App-First Flow):
+1. Select trainer app type (TPV, Zwift, MyWhoosh, Custom)
+2. Auto-detect or manually specify FIT files directory
+3. Enter Garmin username and password
+4. Name the profile (suggested based on app type)
+5. Confirm and save
+
 ### Supported Source Platforms
 The tool recognizes and modifies FIT files from:
-- TrainingPeaks Virtual (manufacturer: DEVELOPMENT or PEAKSWARE) - Formerly indieVelo
-- Zwift (manufacturer: ZWIFT)
-- Wahoo devices (manufacturer: WAHOO_FITNESS)
-- Hammerhead Karoo (manufacturer: HAMMERHEAD)
-- MyWhoosh (manufacturer code: 331, not in fit_tool's enum)
-- COROS (manufacturer: COROS) - Requires fit_tool patch for malformed fields
+- **TrainingPeaks Virtual** (manufacturer: DEVELOPMENT or PEAKSWARE) - Formerly indieVelo
+- **Zwift** (manufacturer: ZWIFT) - Full platform support with auto-detection
+- **Wahoo devices** (manufacturer: WAHOO_FITNESS)
+- **Hammerhead Karoo** (manufacturer: HAMMERHEAD)
+- **MyWhoosh** (manufacturer code: 331, not in fit_tool's enum) - Container/package detection
+- **COROS** (manufacturer: COROS) - Requires fit_tool patch for malformed fields
+
+**Auto-Detection Support**:
+- TrainingPeaks Virtual: macOS (`~/TPVirtual`), Windows (`~/Documents/TPVirtual`), Linux (prompt)
+- Zwift: macOS (`~/Documents/Zwift/Activities`), Windows (`%USERPROFILE%\Documents\Zwift\Activities`), Linux (Wine/Proton paths)
+- MyWhoosh: macOS (Epic container), Windows (AppData package scanning), Linux (not officially supported)
 
 ### Logging and Output
 - Uses `rich` library for formatted console output (configured in `app.py`)

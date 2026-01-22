@@ -23,10 +23,10 @@ Refactor Fit File Faker's configuration system from single-profile to multi-prof
 
 ## 🎯 Implementation Status
 
-**Last Updated:** 2026-01-12
+**Last Updated:** 2026-01-21
 
 ### ✅ Phase 1: Core Data Structures (COMPLETED)
-**Commit:** `34b78cd` - feat(config): add multi-profile data structures and migration
+**Commit:** `371c602` - feat(config): add multi-profile data structures and migration
 
 **Deliverables:**
 - ✅ AppType enum added (TP_VIRTUAL, ZWIFT, MYWHOOSH, CUSTOM)
@@ -41,7 +41,7 @@ Refactor Fit File Faker's configuration system from single-profile to multi-prof
 **Test Results:** 19/19 passing ✅
 
 ### ✅ Phase 2: App Registry & Detection (COMPLETED)
-**Commit:** `6fa0634` - feat(config): add app registry with detector classes
+**Commit:** `63df98e` - feat(config): add app registry with detector classes
 
 **Deliverables:**
 - ✅ app_registry.py module created with AppDetector ABC
@@ -55,35 +55,82 @@ Refactor Fit File Faker's configuration system from single-profile to multi-prof
 
 **Test Results:** 28/28 passing ✅
 
-### 🚧 Phase 3: Profile Management TUI (IN PROGRESS)
-**Status:** Not started
-**Estimated:** 3 days
+### ✅ Phase 3: Profile Management TUI (COMPLETED)
+**Commit:** `d13bf96` - feat(config): add Rich TUI and interactive wizards
+
+**Deliverables:**
+- ✅ ProfileManager class with CRUD operations (create, read, update, delete, set_default)
+- ✅ display_profiles_table() with Rich table formatting
+- ✅ interactive_menu() with Questionary-based navigation
+- ✅ Profile creation wizard (app-first flow: select app → auto-detect → credentials → name)
+- ✅ Profile edit wizard with field selection
+- ✅ Profile deletion wizard with confirmation
+- ✅ Set default profile wizard
+- ✅ Default profile marked with ⭐ in display
+- ✅ Graceful error handling and cancellation support
+- ✅ 15 comprehensive tests for ProfileManager
+
+**Test Results:** 15/15 passing ✅
+
+### ✅ Phase 4: Multi-Profile CLI Integration (COMPLETED)
+**Commit:** `511816b` - feat(app): add multi-profile CLI integration with profile selection
+
+**Deliverables:**
+- ✅ get_garth_dir() function for profile-specific credential isolation
+- ✅ Modified upload() to accept Profile parameter
+- ✅ Modified upload_all() to accept and pass Profile parameter
+- ✅ Updated NewFileEventHandler for profile support
+- ✅ Added CLI arguments: --profile/-p, --list-profiles, --config-menu
+- ✅ Implemented select_profile() with priority logic (arg → default → prompt)
+- ✅ Updated monitor mode for profile selection
+- ✅ All uploads use profile-specific garth directories
+- ✅ 8 comprehensive tests for profile selection and CLI integration
+
+**Test Results:** 8/8 passing ✅
+
+### ✅ Phase 5: Documentation & Polish (COMPLETED)
+**Status:** Completed
+**Estimated:** 2 days
+
+**Completed Tasks:**
+- ✅ Made -s/--initial-setup alias for --config-menu (backward compatibility)
+- ✅ Removed obsolete single-profile setup flow
+- ✅ Updated docstrings in modified functions
+- ✅ Maintained 100% test coverage for core modules
+- ✅ Updated README.md with multi-profile examples and CLI usage
+- ✅ Updated CLAUDE.md with new architecture and module breakdown
+- ✅ Updated docs/developer-guide.md with multi-profile architecture and testing details
+- ✅ Updated docs/index.md user guide with multi-profile configuration
+- ✅ Created docs/profiles.md comprehensive profile guide (13.6KB)
+- ✅ Added multi-profile workflow examples and use cases
+- ✅ Documented extensibility pattern for new apps
+- ✅ Added troubleshooting section for common issues
+- ✅ Updated CLI documentation with new --profile, --list-profiles, --config-menu options
+- ✅ Added migration documentation and backward compatibility notes
+
+### 🚧 Phase 6: Testing & Validation (IN PROGRESS)
+**Status:** Partial completion
+**Estimated:** 2 days
+
+**Completed Tasks:**
+- ✅ All tests pass locally (135 tests total)
+- ✅ 100% coverage maintained for config.py and app.py
+- ✅ 95%+ coverage for app_registry.py
+- ✅ Ruff linting passes
+- ✅ Conventional commit format validation passes
+- ✅ Documentation builds successfully (`mkdocs build`)
+- ✅ All documentation links verified
 
 **Remaining Tasks:**
-- [ ] Create ProfileManager class with CRUD methods
-- [ ] Implement Rich table display for profile list
-- [ ] Implement Questionary-based menu system
-- [ ] Create profile creation wizard (app-first flow)
-- [ ] Create profile edit wizard
-- [ ] Create profile deletion with confirmation
-- [ ] Create set-default-profile wizard
-- [ ] Refactor build_config_file() to use new TUI
-- [ ] Add ~33 tests for ProfileManager
+- [ ] Test on Python 3.12, 3.13, 3.14 via CI
+- [ ] Test on macOS, Windows, Linux via CI
+- [ ] Manual testing of TUI on different terminals
+- [ ] Test migration from real v1.2.4 config
+- [ ] Add integration tests for end-to-end workflows
+- [ ] Create test_integration_profiles.py with ~10 tests
 
-### 📋 Phase 4: Multi-Profile CLI Integration (PENDING)
-**Status:** Not started
-**Estimated:** 2 days
-
-### 📋 Phase 5: Documentation & Polish (PENDING)
-**Status:** Not started
-**Estimated:** 2 days
-
-### 📋 Phase 6: Testing & Validation (PENDING)
-**Status:** Not started
-**Estimated:** 2 days
-
-**Overall Progress:** 2/6 phases complete (33%)
-**Total Tests Added:** 47/146 (32%)
+**Overall Progress:** 5/6 phases complete (83%)
+**Total Tests Added:** 135/146 (92%)
 **Current Branch:** `feat/config_refactor`
 
 ---

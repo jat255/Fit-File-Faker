@@ -105,15 +105,16 @@ whenever a tag is pushed to the repository.
 
 ### Package Structure
 
-The application is organized as a modular Python package (`fit_file_faker/`) with ~998 total lines across five files:
+The application is organized as a modular Python package (`fit_file_faker/`) with ~1,800 total lines across six files:
 
 ```
 fit_file_faker/
 ├── __init__.py           # Package initialization
-├── app.py                # Main application, CLI, uploads, monitoring
-├── config.py             # Configuration management
-├── fit_editor.py         # FIT file editing core logic
-└── utils.py              # Utility functions and monkey patches
+├── app.py                # Main application, CLI, uploads, monitoring (550 lines)
+├── app_registry.py       # NEW: Trainer app detection system (305 lines)
+├── config.py             # Configuration management (750 lines)
+├── fit_editor.py         # FIT file editing core logic (313 lines)
+└── utils.py              # Utility functions and monkey patches (103 lines)
 ```
 
 **Entry Point**: `fit_file_faker.app:run` (defined in `pyproject.toml`)
@@ -121,8 +122,10 @@ fit_file_faker/
 !!! note "Design Philosophy"
     The modular structure improves maintainability while keeping the codebase compact:
 
-    - Separation of concerns (config, editing, upload, utilities)
-    - Easier testing (each module can be tested independently)
+    - **Separation of concerns**: config, editing, upload, utilities, app detection
+    - **Easier testing**: Each module can be tested independently
+    - **Extensible architecture**: New trainer apps can be added via `app_registry.py`
+    - **Backward compatibility**: Legacy single-profile configs auto-migrate
     - Clear boundaries between functionality
     - Still simple to understand and contribute to
 
@@ -149,18 +152,51 @@ The tool follows a six-step process:
 
 ### Module Breakdown
 
-#### `config.py` - Configuration Management
+#### `config.py` - Configuration Management (Multi-Profile Architecture)
 
-- `Config` dataclass: Holds `garmin_username`, `garmin_password`, `fitfiles_path`
-- `ConfigManager` class: Handles config file I/O, validation, and interactive building
-    - `_load_config()`: Loads or creates configuration
+**Core Data Structures**:
+
+- `AppType` enum: `TP_VIRTUAL`, `ZWIFT`, `MYWHOOSH`, `CUSTOM` for trainer app types
+- `Profile` dataclass: Individual profile configuration
+    - `name`: Unique profile identifier
+    - `app_type`: Trainer app type (AppType enum)
+    - `garmin_username`: Garmin account username
+    - `garmin_password`: Garmin account password
+    - `fitfiles_path`: Path to FIT files directory
+- `Config` dataclass: Multi-profile container
+    - `profiles`: List of Profile objects
+    - `default_profile`: Optional default profile name
+
+**Configuration Management**:
+
+- `ConfigManager` class: Handles config file I/O, validation, and auto-migration
+    - `_load_config()`: Loads or creates configuration, auto-migrates legacy format
     - `save_config()`: Persists configuration to disk
     - `is_valid()`: Validates configuration completeness
-    - `build_config_file()`: Interactively builds configuration
+    - `migrate_legacy_config()`: Converts v1.2.4 single-profile to multi-profile format
+- `ProfileManager` class: CRUD operations for profile management
+    - `create_profile()`: Create new profile with validation
+    - `get_profile()`: Retrieve profile by name
+    - `update_profile()`: Modify existing profile
+    - `delete_profile()`: Remove profile with safety checks
+    - `set_default_profile()`: Set default profile
+    - `list_profiles()`: Get all profiles
+
+**TUI Components**:
+
+- `display_profiles_table()`: Rich table display of profiles
+- `interactive_menu()`: Questionary-based menu system
+- Profile creation wizard: App-first flow (select app → auto-detect → credentials → name)
+- Profile edit wizard: Field-specific editing
+- Profile deletion wizard: Confirmation with safety checks
+- Set default profile wizard: Interactive selection
+
+**Utilities**:
+
+- `get_garth_dir(profile_name)`: Profile-specific credential isolation
+- `PathEncoder`: Custom JSON encoder for Path and Enum objects
 - Stored in platform-specific user config directory (via `platformdirs`) as `.config.json`
-- `get_fitfiles_path()`: Auto-detects TrainingPeaks Virtual directories
-- `get_tpv_folder()`: Platform-specific TPV directory detection
-- `PathEncoder`: Custom JSON encoder for Path objects
+- Auto-detection via `app_registry.py` for TPV, Zwift, MyWhoosh directories
 
 #### `fit_editor.py` - FIT File Editing
 
@@ -177,21 +213,56 @@ The tool follows a six-step process:
 - *Activity data is always preserved* (records, laps, sessions) - only modifies device metadata
 - Special handling for Activity messages (reordered to end for COROS compatibility)
 
+#### `app_registry.py` - Trainer App Detection System
+
+**AppDetector ABC**: Abstract base class defining the detector interface
+
+- `get_display_name()`: Human-readable app name for UI
+- `get_default_path()`: Platform-specific FIT files directory detection
+- `validate_path()`: Path validation for the specific app
+
+**Concrete Detectors**:
+
+- `TPVDetector`: TrainingPeaks Virtual directory detection
+    - macOS: `~/TPVirtual/<user_id>/FITFiles`
+    - Windows: `~/Documents/TPVirtual/<user_id>/FITFiles`
+    - Linux: User prompt (no standard path)
+    - Uses `TPV_DATA_PATH` environment variable override
+- `ZwiftDetector`: Zwift activities directory detection
+    - macOS: `~/Documents/Zwift/Activities/`
+    - Windows: `%USERPROFILE%\Documents\Zwift\Activities\`
+    - Linux: Wine/Proton path detection
+- `MyWhooshDetector`: MyWhoosh data directory detection
+    - macOS: Epic container path scanning
+    - Windows: AppData package directory scanning
+    - Linux: User prompt (not officially supported)
+- `CustomDetector`: Manual path specification for unsupported apps
+
+**Registry System**:
+
+- `APP_REGISTRY`: Dictionary mapping `AppType` → detector class
+- `get_detector(app_type)`: Factory function for detector instances
+- Extensible design: Add new apps by implementing AppDetector and registering
+
 #### `app.py` - Main Application
 
 - CLI argument parsing and validation (using `argparse`)
-- `run()`: Main entry point with Python version checking
-- `upload()`: Garmin Connect upload with OAuth authentication via `garth`
+- **Multi-Profile Support**: New CLI arguments
+    - `--profile/-p`: Use specific profile for operation
+    - `--list-profiles`: Display all configured profiles
+    - `--config-menu`: Launch interactive profile management
+- `select_profile()`: Profile selection logic (arg → default → prompt)
+- `upload()`: Garmin Connect upload with OAuth authentication via `garth` (now accepts `Profile` parameter)
     - Handles authentication and credential prompting
-    - Caches credentials in `.garth` directory
+    - Caches credentials in profile-specific `.garth_{profile_name}` directories
     - Gracefully handles HTTP 409 conflicts (duplicate activities)
-- `upload_all()`: Batch processes all FIT files in a directory
+- `upload_all()`: Batch processes all FIT files in a directory (profile-aware)
     - Maintains `.uploaded_files.json` to track processed files
     - Creates temporary files for uploads (discarded after upload)
-- `monitor()`: Watches directory for new FIT files using `watchdog`
-- `NewFileEventHandler`: Event handler class for monitoring mode
-    - 5-second delay after file creation to ensure write completion
-    - Automatically processes and uploads new files
+- `monitor()`: Watches directory for new FIT files using `watchdog` (profile-specific)
+- `NewFileEventHandler`: Event handler class for monitoring mode (uses profile)
+      - 5-second delay after file creation to ensure write completion
+      - Automatically processes and uploads new files
 - Rich console output with colored logs and tracebacks
 
 #### `utils.py` - Utility Functions
@@ -221,6 +292,45 @@ The tool recognizes and modifies FIT files from:
 - Custom `FitFileLogFilter` in `fit_editor.py` to suppress fit_tool's "actual:" warnings
 - Debug mode (`-v`) provides detailed message-by-message processing logs
 - Separate log level configuration for different modules (urllib3, oauth1_auth, watchdog, asyncio, etc.)
+
+
+## 📚 Extensibility
+
+### Adding New Trainer Apps
+
+The architecture is designed to be extensible. To add support for a new trainer app:
+
+1. **Add enum value**: Add to `AppType` enum in `config.py`
+2. **Create detector**: Implement `AppDetector` subclass in `app_registry.py`
+3. **Register detector**: Add to `APP_REGISTRY` dictionary
+4. **Done!**: App automatically appears in creation menu
+
+### Example: Adding Rouvy Support
+
+```python
+# 1. Add to AppType enum
+class AppType(str, Enum):
+    ROUVY = "rouvy"
+
+# 2. Create detector class
+class RouvyDetector(AppDetector):
+    def get_display_name(self) -> str:
+        return "Rouvy"
+    
+    def get_default_path(self) -> Path | None:
+        # Implement platform-specific detection
+        pass
+    
+    def validate_path(self, path: Path) -> bool:
+        # Implement path validation
+        pass
+
+# 3. Register in APP_REGISTRY
+APP_REGISTRY = {
+    # ... existing entries
+    AppType.ROUVY: RouvyDetector,
+}
+```
 
 ## Important Implementation Notes
 
@@ -281,9 +391,10 @@ The test suite includes **53+ tests** with **100% code coverage** for all major 
 ```
 tests/
 ├── conftest.py              # Shared fixtures and test configuration
-├── test_fit_editor.py       # FIT editing tests
-├── test_config.py           # Configuration tests
-├── test_app.py              # Application and upload tests
+├── test_fit_editor.py       # FIT editing tests (32 tests)
+├── test_config.py           # Configuration tests (55 tests)
+├── test_app_registry.py     # NEW: App registry and detector tests (28 tests)
+├── test_app.py              # Application and upload tests (30 tests)
 ├── test_utils.py            # Utility function tests
 └── files/                   # Test FIT files from various platforms
     ├── tpv_20250111.fit

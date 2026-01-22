@@ -67,6 +67,42 @@ fit-file-faker -m
 
 See the [documentation](https://jat255.github.io/Fit-File-Faker/) for detailed usage instructions.
 
+## 🔐 Multi-Profile Support
+
+FIT File Faker supports multiple profiles, allowing you to manage different Garmin accounts and trainer apps:
+
+```bash
+# Launch interactive profile management menu
+fit-file-faker --config-menu
+
+# List all profiles
+fit-file-faker --list-profiles
+
+# Use a specific profile
+fit-file-faker --profile my-profile -ua
+
+# Monitor with a specific profile
+fit-file-faker --profile zwift -m
+```
+
+Each profile can have:
+- **Different Garmin accounts** (credentials are isolated per profile)
+- **Different trainer apps** (TrainingPeaks Virtual, Zwift, MyWhoosh)
+- **Different FIT file directories**
+
+Example workflow for multiple accounts:
+```bash
+# Create profiles
+fit-file-faker --config-menu
+# Select "Create new profile" and follow prompts for each trainer app
+
+# Daily usage
+fit-file-faker --profile tpv -ua      # Upload TPV files to work account
+fit-file-faker --profile zwift -ua    # Upload Zwift files to personal account
+```
+
+See the [profiles guide](https://jat255.github.io/Fit-File-Faker/profiles/) for comprehensive multi-profile documentation.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Here's how to get started:
