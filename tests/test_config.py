@@ -1648,12 +1648,9 @@ class TestProfileManagerWizards:
         output = captured.out
         # Check that the path is truncated with "..."
         assert "..." in output
-        # Check that part of the truncated path is present (table may further truncate)
-        # Use platform-agnostic path separator check
-        assert (
-            "rty/characters/for/testing" in output
-            or "rty\\characters\\for\\testing" in output
-        )
+        # Check that the table shows test_profile and has Device column
+        assert "test_profile" in output
+        assert "EDGE_830" in output  # Default device
 
     def test_delete_profile_wizard_handles_error(
         self, manager_with_profiles, monkeypatch, capsys
@@ -2045,10 +2042,15 @@ class TestProfileManagerWizards:
         def mock_password(prompt, **kwargs):
             return MockQuestion("password123")
 
+        def mock_confirm(prompt, **kwargs):
+            # Return False for device customization
+            return MockQuestion(False)
+
         monkeypatch.setattr(questionary, "select", mock_select)
         monkeypatch.setattr(questionary, "path", mock_path)
         monkeypatch.setattr(questionary, "text", mock_text)
         monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
 
         result = manager.create_profile_wizard()
 
@@ -2338,10 +2340,15 @@ class TestProfileManagerWizards:
         def mock_path(prompt, **kwargs):
             return MockQuestion(str(new_path))
 
+        def mock_confirm(prompt, **kwargs):
+            # Return False for device customization
+            return MockQuestion(False)
+
         monkeypatch.setattr(questionary, "select", mock_select)
         monkeypatch.setattr(questionary, "text", mock_text)
         monkeypatch.setattr(questionary, "password", mock_password)
         monkeypatch.setattr(questionary, "path", mock_path)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
 
         manager_with_profiles.edit_profile_wizard()
 
@@ -2374,10 +2381,15 @@ class TestProfileManagerWizards:
         def mock_path(prompt, **kwargs):
             return MockQuestion("")
 
+        def mock_confirm(prompt, **kwargs):
+            # Return False for device customization to keep things simple
+            return MockQuestion(False)
+
         monkeypatch.setattr(questionary, "select", mock_select)
         monkeypatch.setattr(questionary, "text", mock_text)
         monkeypatch.setattr(questionary, "password", mock_password)
         monkeypatch.setattr(questionary, "path", mock_path)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
 
         manager_with_profiles.edit_profile_wizard()
 
@@ -2410,10 +2422,15 @@ class TestProfileManagerWizards:
         def mock_path(prompt, **kwargs):
             return MockQuestion("")
 
+        def mock_confirm(prompt, **kwargs):
+            # Return False for device customization
+            return MockQuestion(False)
+
         monkeypatch.setattr(questionary, "select", mock_select)
         monkeypatch.setattr(questionary, "text", mock_text)
         monkeypatch.setattr(questionary, "password", mock_password)
         monkeypatch.setattr(questionary, "path", mock_path)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
 
         # Mock update_profile to raise error
         def mock_update(*args, **kwargs):
@@ -2495,3 +2512,554 @@ class TestProfileManagerWizards:
 
         # Should exit gracefully without error
         manager_with_profiles.edit_profile_wizard()
+
+
+class TestDeviceConfiguration:
+    """Tests for device configuration functionality."""
+
+    @pytest.fixture
+    def manager(self, tmp_path, monkeypatch):
+        """Create ProfileManager with temporary config."""
+        from fit_file_faker.config import dirs
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir(exist_ok=True)
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir(exist_ok=True)
+
+        monkeypatch.setattr(dirs, "user_config_path", config_dir)
+        monkeypatch.setattr(dirs, "user_cache_path", cache_dir)
+
+        from fit_file_faker.config import ConfigManager, ProfileManager
+
+        return ProfileManager(ConfigManager())
+
+    @pytest.fixture
+    def manager_with_profiles(self, manager):
+        """Create a manager with test profiles."""
+        manager.create_profile(
+            name="profile1",
+            app_type=AppType.ZWIFT,
+            garmin_username="user1@example.com",
+            garmin_password="password1",
+            fitfiles_path=Path("/path/to/zwift"),
+        )
+        manager.create_profile(
+            name="profile2",
+            app_type=AppType.TP_VIRTUAL,
+            garmin_username="user2@example.com",
+            garmin_password="password2",
+            fitfiles_path=Path("/path/to/tpv"),
+        )
+        return manager
+
+    def test_get_supported_garmin_devices(self):
+        """Test get_supported_garmin_devices returns filtered device list."""
+        from fit_file_faker.config import get_supported_garmin_devices
+
+        devices = get_supported_garmin_devices()
+
+        # Should return a non-empty list
+        assert len(devices) > 0
+
+        # Each item should be a tuple (name, id)
+        for device in devices:
+            assert isinstance(device, tuple)
+            assert len(device) == 2
+            name, device_id = device
+            assert isinstance(name, str)
+            assert isinstance(device_id, int)
+
+            # Name should contain one of the keywords
+            assert any(kw in name for kw in ["EDGE", "TACX", "TRAINING"])
+
+        # Should be sorted by name
+        names = [d[0] for d in devices]
+        assert names == sorted(names)
+
+    def test_profile_with_device_settings(self):
+        """Test Profile with custom manufacturer and device settings."""
+        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+
+        profile = Profile(
+            name="custom",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            manufacturer=Manufacturer.GARMIN.value,
+            device=GarminProduct.EDGE_1030.value,
+        )
+
+        assert profile.manufacturer == Manufacturer.GARMIN.value
+        assert profile.device == GarminProduct.EDGE_1030.value
+        assert profile.get_manufacturer_name() == "GARMIN"
+        assert profile.get_device_name() == "EDGE_1030"
+
+    def test_profile_defaults_to_edge_830(self):
+        """Test Profile defaults to Garmin Edge 830 when device not specified."""
+        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+
+        profile = Profile(
+            name="default",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+        )
+
+        # Should default to Garmin Edge 830
+        assert profile.manufacturer == Manufacturer.GARMIN.value
+        assert profile.device == GarminProduct.EDGE_830.value
+        assert profile.get_manufacturer_name() == "GARMIN"
+        assert profile.get_device_name() == "EDGE_830"
+
+    def test_profile_unknown_device_id(self):
+        """Test Profile with unknown device ID shows UNKNOWN."""
+        profile = Profile(
+            name="custom",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            manufacturer=1,
+            device=99999,  # Unknown device ID
+        )
+
+        assert profile.manufacturer == 1
+        assert profile.device == 99999
+        assert profile.get_manufacturer_name() == "GARMIN"
+        assert profile.get_device_name() == "UNKNOWN (99999)"
+
+    def test_create_profile_with_custom_device(self, isolate_config_dirs):
+        """Test creating profile with custom device via ProfileManager."""
+        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+
+        manager = ProfileManager(ConfigManager())
+
+        profile = manager.create_profile(
+            name="edge1030",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="password",
+            fitfiles_path=Path("/path/to/fitfiles"),
+            manufacturer=Manufacturer.GARMIN.value,
+            device=GarminProduct.EDGE_1030.value,
+        )
+
+        assert profile.name == "edge1030"
+        assert profile.manufacturer == Manufacturer.GARMIN.value
+        assert profile.device == GarminProduct.EDGE_1030.value
+        assert profile.get_device_name() == "EDGE_1030"
+
+    def test_update_profile_device(self, isolate_config_dirs):
+        """Test updating profile device settings."""
+        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+
+        manager = ProfileManager(ConfigManager())
+
+        # Create initial profile
+        manager.create_profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="password",
+            fitfiles_path=Path("/path/to/fitfiles"),
+        )
+
+        # Update device to Edge 1030
+        updated = manager.update_profile(
+            name="test",
+            manufacturer=Manufacturer.GARMIN.value,
+            device=GarminProduct.EDGE_1030.value,
+        )
+
+        assert updated.device == GarminProduct.EDGE_1030.value
+        assert updated.get_device_name() == "EDGE_1030"
+
+    def test_display_profiles_table_shows_device(
+        self, isolate_config_dirs, monkeypatch, capsys
+    ):
+        """Test that display_profiles_table shows device column."""
+        from fit_tool.profile.profile_type import GarminProduct
+
+        manager = ProfileManager(ConfigManager())
+
+        # Create profile with custom device
+        manager.create_profile(
+            name="edge1030",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="password",
+            fitfiles_path=Path("/path/to/fitfiles"),
+            device=GarminProduct.EDGE_1030.value,
+        )
+
+        # Mock detector
+        class MockDetector:
+            def get_short_name(self):
+                return "Zwift"
+
+        def mock_get_detector(app_type):
+            return MockDetector()
+
+        monkeypatch.setattr(
+            "fit_file_faker.app_registry.get_detector", mock_get_detector
+        )
+
+        # Display table
+        manager.display_profiles_table()
+
+        # Capture output
+        captured = capsys.readouterr()
+
+        # Should show device name in output
+        assert "EDGE_1030" in captured.out or "Device" in captured.out
+
+    def test_profile_unknown_manufacturer_id(self):
+        """Test Profile.get_manufacturer_name() with unknown manufacturer ID."""
+        profile = Profile(
+            name="custom",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            manufacturer=99999,  # Unknown manufacturer ID
+            device=3122,
+        )
+
+        # Should return UNKNOWN with the ID
+        assert profile.get_manufacturer_name() == "UNKNOWN (99999)"
+
+    def test_create_profile_wizard_with_custom_device_id(
+        self, manager, monkeypatch, capsys
+    ):
+        """Test create profile wizard with custom numeric device ID."""
+
+        class MockDetector:
+            def get_default_path(self):
+                return Path("/detected/path")
+
+            def get_display_name(self):
+                return "Test App"
+
+        def mock_get_detector(app_type):
+            return MockDetector()
+
+        monkeypatch.setattr(
+            "fit_file_faker.app_registry.get_detector", mock_get_detector
+        )
+
+        call_tracker = {"confirm_count": 0, "select_count": 0, "text_count": 0}
+
+        def mock_select(prompt, choices, **kwargs):
+            call_tracker["select_count"] += 1
+            if "trainer app" in prompt:
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == AppType.ZWIFT:
+                        return MockQuestion(AppType.ZWIFT)
+            elif "device to simulate" in prompt:
+                # Select "Custom (enter numeric ID)"
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == ("CUSTOM", None):
+                        return MockQuestion(("CUSTOM", None))
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            call_tracker["confirm_count"] += 1
+            if "Use this directory" in prompt:
+                return MockQuestion(True)
+            elif "Customize device" in prompt:
+                return MockQuestion(True)  # Yes, customize device
+            return MockQuestion(False)
+
+        def mock_text(prompt, **kwargs):
+            call_tracker["text_count"] += 1
+            if "email" in prompt.lower():
+                return MockQuestion("user@example.com")
+            elif "numeric device ID" in prompt:
+                # Return a valid known device ID first
+                return MockQuestion("2713")  # EDGE_1030
+            elif "name" in prompt.lower():
+                return MockQuestion("custom_device_profile")
+            return MockQuestion("test_value")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("password123")
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+
+        result = manager.create_profile_wizard()
+
+        assert result is not None
+        assert result.device == 2713  # EDGE_1030
+
+    def test_create_profile_wizard_with_unknown_custom_device_id(
+        self, manager, monkeypatch, capsys
+    ):
+        """Test create profile wizard with unknown custom numeric device ID shows warning."""
+
+        class MockDetector:
+            def get_default_path(self):
+                return Path("/detected/path")
+
+            def get_display_name(self):
+                return "Test App"
+
+        def mock_get_detector(app_type):
+            return MockDetector()
+
+        monkeypatch.setattr(
+            "fit_file_faker.app_registry.get_detector", mock_get_detector
+        )
+
+        def mock_select(prompt, choices, **kwargs):
+            if "trainer app" in prompt:
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == AppType.ZWIFT:
+                        return MockQuestion(AppType.ZWIFT)
+            elif "device to simulate" in prompt:
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == ("CUSTOM", None):
+                        return MockQuestion(("CUSTOM", None))
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Use this directory" in prompt:
+                return MockQuestion(True)
+            elif "Customize device" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        def mock_text(prompt, **kwargs):
+            if "email" in prompt.lower():
+                return MockQuestion("user@example.com")
+            elif "numeric device ID" in prompt:
+                return MockQuestion("99999")  # Unknown device ID
+            elif "name" in prompt.lower():
+                return MockQuestion("unknown_device_profile")
+            return MockQuestion("test_value")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("password123")
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+
+        result = manager.create_profile_wizard()
+
+        assert result is not None
+        assert result.device == 99999
+
+        # Check that warning was printed
+        captured = capsys.readouterr()
+        assert "Warning" in captured.out
+        assert "99999" in captured.out
+        assert "not recognized" in captured.out
+
+    def test_create_profile_wizard_cancel_device_selection(self, manager, monkeypatch):
+        """Test create profile wizard when user cancels at device selection."""
+
+        class MockDetector:
+            def get_default_path(self):
+                return Path("/detected/path")
+
+            def get_display_name(self):
+                return "Test App"
+
+        def mock_get_detector(app_type):
+            return MockDetector()
+
+        monkeypatch.setattr(
+            "fit_file_faker.app_registry.get_detector", mock_get_detector
+        )
+
+        def mock_select(prompt, choices, **kwargs):
+            if "trainer app" in prompt:
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == AppType.ZWIFT:
+                        return MockQuestion(AppType.ZWIFT)
+            elif "device to simulate" in prompt:
+                return MockQuestion(None)  # Cancel device selection
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Use this directory" in prompt:
+                return MockQuestion(True)
+            elif "Customize device" in prompt:
+                return MockQuestion(True)  # Yes, but then cancel
+            return MockQuestion(False)
+
+        def mock_text(prompt, **kwargs):
+            if "email" in prompt.lower():
+                return MockQuestion("user@example.com")
+            return MockQuestion("test_value")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("password123")
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+
+        result = manager.create_profile_wizard()
+
+        # Should return None when device selection is cancelled
+        assert result is None
+
+    def test_create_profile_wizard_cancel_custom_device_input(
+        self, manager, monkeypatch
+    ):
+        """Test create profile wizard when user cancels custom device ID input."""
+
+        class MockDetector:
+            def get_default_path(self):
+                return Path("/detected/path")
+
+            def get_display_name(self):
+                return "Test App"
+
+        def mock_get_detector(app_type):
+            return MockDetector()
+
+        monkeypatch.setattr(
+            "fit_file_faker.app_registry.get_detector", mock_get_detector
+        )
+
+        def mock_select(prompt, choices, **kwargs):
+            if "trainer app" in prompt:
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == AppType.ZWIFT:
+                        return MockQuestion(AppType.ZWIFT)
+            elif "device to simulate" in prompt:
+                # Select custom device option
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == ("CUSTOM", None):
+                        return MockQuestion(("CUSTOM", None))
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Use this directory" in prompt:
+                return MockQuestion(True)
+            elif "Customize device" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        def mock_text(prompt, **kwargs):
+            if "email" in prompt.lower():
+                return MockQuestion("user@example.com")
+            elif "numeric device ID" in prompt:
+                return MockQuestion(None)  # Cancel device ID input
+            return MockQuestion("test_value")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("password123")
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+
+        result = manager.create_profile_wizard()
+
+        # Should return None when custom device ID input is cancelled
+        assert result is None
+
+    def test_edit_profile_wizard_with_device_customization(
+        self, manager_with_profiles, monkeypatch, capsys
+    ):
+        """Test edit profile wizard with device customization."""
+        from fit_tool.profile.profile_type import GarminProduct
+
+        def mock_select(prompt, choices, **kwargs):
+            if "Select profile to edit" in prompt:
+                return MockQuestion("profile1")
+            elif "device to simulate" in prompt:
+                # Return a Choice object directly (to test line 1264)
+                for choice in choices:
+                    if hasattr(choice, "value"):
+                        name, device_id = choice.value
+                        if device_id == GarminProduct.EDGE_1030.value:
+                            # Return the Choice object itself, not just its value
+                            return MockQuestion(choice)
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit device simulation" in prompt:
+                return MockQuestion(True)  # Yes, edit device
+            return MockQuestion(False)
+
+        def mock_text(prompt, **kwargs):
+            return MockQuestion("")  # Keep existing values
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_path(prompt, **kwargs):
+            return MockQuestion("")
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "path", mock_path)
+
+        manager_with_profiles.edit_profile_wizard()
+
+        # Verify device was updated
+        profile = manager_with_profiles.get_profile("profile1")
+        assert profile.device == GarminProduct.EDGE_1030.value
+
+    def test_edit_profile_wizard_with_custom_device_id(
+        self, manager_with_profiles, monkeypatch, capsys
+    ):
+        """Test edit profile wizard with custom unknown device ID."""
+
+        def mock_select(prompt, choices, **kwargs):
+            if "Select profile to edit" in prompt:
+                return MockQuestion("profile1")
+            elif "device to simulate" in prompt:
+                # Select custom device option
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == ("CUSTOM", None):
+                        return MockQuestion(("CUSTOM", None))
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit device simulation" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        def mock_text(prompt, **kwargs):
+            if "numeric device ID" in prompt:
+                return MockQuestion("88888")  # Unknown device ID
+            return MockQuestion("")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_path(prompt, **kwargs):
+            return MockQuestion("")
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "path", mock_path)
+
+        manager_with_profiles.edit_profile_wizard()
+
+        # Verify device was updated
+        profile = manager_with_profiles.get_profile("profile1")
+        assert profile.device == 88888
+
+        # Check warning was shown
+        captured = capsys.readouterr()
+        assert "Warning" in captured.out
+        assert "88888" in captured.out

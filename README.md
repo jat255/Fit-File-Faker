@@ -15,7 +15,7 @@ A Python tool to modify [FIT](https://developer.garmin.com/fit/overview/) files 
 
 > **☕ Enjoying this tool?** If FIT File Faker saves you time or enhances your training workflow, consider [buying me a coffee](https://ko-fi.com/josh851356). Your support helps maintain and improve this project!
 
-**Edit** FIT files to appear as if they came from a Garmin Edge 830 device, enabling Training Effect calculations and other Garmin features for activities from platforms like:
+**Edit** FIT files to appear as if they came from a Garmin device (Edge 830 by default, or any supported Garmin cycling device), enabling Training Effect calculations and other Garmin features for activities from platforms like:
 - [TrainingPeaks Virtual](https://www.trainingpeaks.com/virtual/)
 - [Zwift](https://www.zwift.com/)
 - [MyWhoosh](https://mywhoosh.com/)
@@ -89,6 +89,7 @@ Each profile can have:
 - **Different Garmin accounts** (credentials are isolated per profile)
 - **Different trainer apps** (TrainingPeaks Virtual, Zwift, MyWhoosh)
 - **Different FIT file directories**
+- **Different Garmin device simulation** (Edge 830, Edge 1030, Tacx, etc.)
 
 Example workflow for multiple accounts:
 ```bash

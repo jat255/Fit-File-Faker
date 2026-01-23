@@ -189,3 +189,102 @@ class TestFitEditor:
 
         # Verify file still has records
         assert len(fit_file.records) > 0
+
+
+class TestCustomDeviceSimulation:
+    """Tests for custom device simulation via profile settings."""
+
+    @pytest.mark.slow
+    def test_edit_fit_with_custom_profile(self, tpv_fit_parsed, temp_dir):
+        """Test editing FIT file with custom device profile."""
+        from fit_file_faker.config import Profile, AppType
+        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+
+        # Create profile with Edge 1030
+        profile = Profile(
+            name="custom",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            manufacturer=Manufacturer.GARMIN.value,
+            device=GarminProduct.EDGE_1030.value,
+        )
+
+        # Create editor with profile
+        editor = FitEditor(profile=profile)
+        output_file = temp_dir / "custom_device.fit"
+
+        # Edit the file
+        result = editor.edit_fit(tpv_fit_parsed, output=output_file)
+
+        # Verify the file was created
+        assert result == output_file
+        assert output_file.exists()
+
+        # Verify it uses Edge 1030 instead of Edge 830
+        modified_fit = FitFile.from_file(str(output_file))
+        file_id_found = False
+        for record in modified_fit.records:
+            message = record.message
+            if isinstance(message, FileIdMessage):
+                file_id_found = True
+                assert message.manufacturer == Manufacturer.GARMIN.value
+                assert message.product == GarminProduct.EDGE_1030.value
+                break
+
+        assert file_id_found
+
+    @pytest.mark.slow
+    def test_set_profile_after_init(self, tpv_fit_parsed, temp_dir):
+        """Test setting profile after initialization."""
+        from fit_file_faker.config import Profile, AppType
+        from fit_tool.profile.profile_type import GarminProduct
+
+        # Create editor without profile
+        editor = FitEditor()
+
+        # Create and set profile
+        profile = Profile(
+            name="custom",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            device=GarminProduct.EDGE_1030.value,
+        )
+
+        editor.set_profile(profile)
+        output_file = temp_dir / "set_profile.fit"
+
+        # Edit the file
+        result = editor.edit_fit(tpv_fit_parsed, output=output_file)
+
+        # Verify the file uses Edge 1030
+        assert result == output_file
+        modified_fit = FitFile.from_file(str(output_file))
+        for record in modified_fit.records:
+            message = record.message
+            if isinstance(message, FileIdMessage):
+                assert message.product == GarminProduct.EDGE_1030.value
+                break
+
+    @pytest.mark.slow
+    def test_edit_fit_without_profile_uses_defaults(self, tpv_fit_parsed, temp_dir):
+        """Test that editor without profile defaults to Edge 830."""
+        # Create editor without profile
+        editor = FitEditor()
+        output_file = temp_dir / "defaults.fit"
+
+        # Edit the file
+        result = editor.edit_fit(tpv_fit_parsed, output=output_file)
+
+        # Verify it uses default Edge 830
+        assert result == output_file
+        modified_fit = FitFile.from_file(str(output_file))
+        for record in modified_fit.records:
+            message = record.message
+            if isinstance(message, FileIdMessage):
+                assert message.manufacturer == Manufacturer.GARMIN.value
+                assert message.product == GarminProduct.EDGE_830.value
+                break

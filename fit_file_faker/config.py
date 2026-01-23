@@ -77,6 +77,35 @@ class PathEncoder(json.JSONEncoder):
         return super().default(obj)  # pragma: no cover
 
 
+def get_supported_garmin_devices() -> list[tuple[str, int]]:
+    """Get list of Garmin devices filtered to cycling/training devices.
+
+    Returns devices with "EDGE", "TACX", or "TRAINING" in their names.
+    Returns list of (name, value) tuples sorted by name.
+
+    Returns:
+        List of tuples containing (device_name, device_id) for supported devices.
+
+    Examples:
+        >>> devices = get_supported_garmin_devices()
+        >>> print(devices[0])
+        ('EDGE_1030', 2713)
+    """
+    from fit_tool.profile.profile_type import GarminProduct
+
+    products = []
+    for attr_name in dir(GarminProduct):
+        if not attr_name.startswith("_") and attr_name.isupper():
+            if any(kw in attr_name for kw in ["EDGE", "TACX", "TRAINING"]):
+                try:
+                    value = getattr(GarminProduct, attr_name).value
+                    products.append((attr_name, value))
+                except AttributeError:  # pragma: no cover
+                    continue
+
+    return sorted(products, key=lambda x: x[0])
+
+
 class AppType(Enum):
     """Supported trainer/cycling applications.
 
@@ -111,6 +140,8 @@ class Profile:
         garmin_username: Garmin Connect account email address
         garmin_password: Garmin Connect account password
         fitfiles_path: Path to directory containing FIT files to process
+        manufacturer: Manufacturer ID to use for device simulation (defaults to Garmin)
+        device: Device/product ID to use for device simulation (defaults to Edge 830)
 
     Examples:
         >>> from pathlib import Path
@@ -128,17 +159,62 @@ class Profile:
     garmin_username: str
     garmin_password: str
     fitfiles_path: Path
+    manufacturer: int | None = None
+    device: int | None = None
 
     def __post_init__(self):
         """Convert string types to proper objects after initialization.
 
         Handles deserialization from JSON where app_type may be a string
-        and fitfiles_path may be a string path.
+        and fitfiles_path may be a string path. Also sets default values
+        for manufacturer and device if not specified.
         """
+        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+
         if isinstance(self.app_type, str):
             self.app_type = AppType(self.app_type)
         if isinstance(self.fitfiles_path, str):
             self.fitfiles_path = Path(self.fitfiles_path)
+
+        # Set defaults for manufacturer and device if not specified
+        if self.manufacturer is None:
+            self.manufacturer = Manufacturer.GARMIN.value
+        if self.device is None:
+            self.device = GarminProduct.EDGE_830.value
+
+    def get_manufacturer_name(self) -> str:
+        """Get human-readable manufacturer name.
+
+        Returns:
+            Manufacturer name if found in enum, otherwise "UNKNOWN (id)".
+
+        Examples:
+            >>> profile.get_manufacturer_name()
+            'GARMIN'
+        """
+        from fit_tool.profile.profile_type import Manufacturer
+
+        try:
+            return Manufacturer(self.manufacturer).name
+        except ValueError:
+            return f"UNKNOWN ({self.manufacturer})"
+
+    def get_device_name(self) -> str:
+        """Get human-readable device name.
+
+        Returns:
+            Device name if found in GarminProduct enum, otherwise "UNKNOWN (id)".
+
+        Examples:
+            >>> profile.get_device_name()
+            'EDGE_830'
+        """
+        from fit_tool.profile.profile_type import GarminProduct
+
+        try:
+            return GarminProduct(self.device).name
+        except ValueError:
+            return f"UNKNOWN ({self.device})"
 
 
 @dataclass
@@ -688,6 +764,8 @@ class ProfileManager:
         garmin_username: str,
         garmin_password: str,
         fitfiles_path: Path,
+        manufacturer: int | None = None,
+        device: int | None = None,
     ) -> Profile:
         """Create a new profile and add it to config.
 
@@ -697,6 +775,8 @@ class ProfileManager:
             garmin_username: Garmin Connect email.
             garmin_password: Garmin Connect password.
             fitfiles_path: Path to FIT files directory.
+            manufacturer: Manufacturer ID for device simulation (defaults to Garmin).
+            device: Device/product ID for device simulation (defaults to Edge 830).
 
         Returns:
             The newly created Profile object.
@@ -725,6 +805,8 @@ class ProfileManager:
             garmin_username=garmin_username,
             garmin_password=garmin_password,
             fitfiles_path=fitfiles_path,
+            manufacturer=manufacturer,
+            device=device,
         )
 
         # Add to config and save
@@ -761,6 +843,8 @@ class ProfileManager:
         garmin_password: str | None = None,
         fitfiles_path: Path | None = None,
         new_name: str | None = None,
+        manufacturer: int | None = None,
+        device: int | None = None,
     ) -> Profile:
         """Update an existing profile.
 
@@ -771,6 +855,8 @@ class ProfileManager:
             garmin_password: New Garmin password (optional).
             fitfiles_path: New FIT files path (optional).
             new_name: New profile name (optional).
+            manufacturer: New manufacturer ID (optional).
+            device: New device ID (optional).
 
         Returns:
             The updated Profile object.
@@ -797,6 +883,10 @@ class ProfileManager:
             profile.garmin_password = garmin_password
         if fitfiles_path is not None:
             profile.fitfiles_path = fitfiles_path
+        if manufacturer is not None:
+            profile.manufacturer = manufacturer
+        if device is not None:
+            profile.device = device
 
         # Update default_profile if name changed
         if new_name and self.config_manager.config.default_profile == name:
@@ -856,7 +946,7 @@ class ProfileManager:
     def display_profiles_table(self) -> None:
         """Display all profiles in a Rich table.
 
-        Shows profile name, app type, Garmin username, and FIT files path
+        Shows profile name, app type, device, Garmin username, and FIT files path
         in a formatted table. Marks the default profile with ⭐.
         """
         console = Console()
@@ -868,6 +958,7 @@ class ProfileManager:
 
         table.add_column("Name", style="green", no_wrap=True)
         table.add_column("App", style="blue")
+        table.add_column("Device", style="cyan")
         table.add_column("Garmin User", style="yellow")
         table.add_column("FIT Path", style="magenta")
 
@@ -888,12 +979,21 @@ class ProfileManager:
             detector = get_detector(profile.app_type)
             app_display = detector.get_short_name()
 
+            # Get device name
+            device_display = profile.get_device_name()
+
             # Truncate long paths
             path_str = str(profile.fitfiles_path)
             if len(path_str) > 40:
                 path_str = "..." + path_str[-37:]
 
-            table.add_row(name_display, app_display, profile.garmin_username, path_str)
+            table.add_row(
+                name_display,
+                app_display,
+                device_display,
+                profile.garmin_username,
+                path_str,
+            )
 
         console.print(table)
 
@@ -1013,7 +1113,68 @@ class ProfileManager:
         if not garmin_password:
             return None
 
-        # Step 4: Profile name
+        # Step 4: Device customization (optional)
+        manufacturer = None
+        device = None
+        customize_device = questionary.confirm(
+            "Customize device simulation? (default: Garmin Edge 830)", default=False
+        ).ask()
+
+        if customize_device:
+            # Get list of supported devices
+            supported_devices = get_supported_garmin_devices()
+            device_choices = [
+                questionary.Choice(f"{name} ({device_id})", (name, device_id))
+                for name, device_id in supported_devices
+            ]
+            device_choices.append(
+                questionary.Choice("Custom (enter numeric ID)", ("CUSTOM", None))
+            )
+
+            selected = questionary.select(
+                "Select Garmin device to simulate:", choices=device_choices
+            ).ask()
+
+            if not selected:
+                return None
+
+            # Extract value from Choice object if necessary (for testing)
+            if hasattr(selected, "value"):
+                selected = selected.value
+
+            device_name, device_id = selected
+
+            if device_name == "CUSTOM":
+                # Allow custom numeric ID
+                device_input = questionary.text(
+                    "Enter numeric device ID:",
+                    validate=lambda x: x.isdigit() and int(x) > 0,
+                ).ask()
+
+                if not device_input:
+                    return None
+
+                device = int(device_input)
+
+                # Warn if device ID not in enum
+                from fit_tool.profile.profile_type import GarminProduct
+
+                try:
+                    GarminProduct(device)
+                except ValueError:
+                    console.print(
+                        f"\n[yellow]⚠ Warning: Device ID {device} is not recognized in the "
+                        f"GarminProduct enum. The profile will still be created.[/yellow]"
+                    )
+            else:
+                device = device_id
+
+            # Always use Garmin manufacturer for now
+            from fit_tool.profile.profile_type import Manufacturer
+
+            manufacturer = Manufacturer.GARMIN.value
+
+        # Step 5: Profile name
         suggested_name = app_type.value.split("_")[0].lower()
         profile_name = questionary.text(
             "Enter profile name:", default=suggested_name, validate=lambda x: len(x) > 0
@@ -1029,6 +1190,8 @@ class ProfileManager:
                 garmin_username=garmin_username,
                 garmin_password=garmin_password,
                 fitfiles_path=fitfiles_path,
+                manufacturer=manufacturer,
+                device=device,
             )
             console.print(
                 f"\n[green]✓ Profile '{profile_name}' created successfully![/green]"
@@ -1076,6 +1239,64 @@ class ProfileManager:
             f"FIT files path [{profile.fitfiles_path}]:", default=""
         ).ask()
 
+        # Ask about device simulation
+        new_manufacturer = None
+        new_device = None
+        current_device = profile.get_device_name()
+        edit_device = questionary.confirm(
+            f"Edit device simulation? (current: {current_device})", default=False
+        ).ask()
+
+        if edit_device:
+            # Get list of supported devices
+            supported_devices = get_supported_garmin_devices()
+            device_choices = [
+                questionary.Choice(f"{name} ({device_id})", (name, device_id))
+                for name, device_id in supported_devices
+            ]
+            device_choices.append(
+                questionary.Choice("Custom (enter numeric ID)", ("CUSTOM", None))
+            )
+
+            selected = questionary.select(
+                "Select Garmin device to simulate:", choices=device_choices
+            ).ask()
+
+            if selected:
+                # Extract value from Choice object if necessary (for testing)
+                if hasattr(selected, "value"):
+                    selected = selected.value
+
+                device_name, device_id = selected
+
+                if device_name == "CUSTOM":
+                    # Allow custom numeric ID
+                    device_input = questionary.text(
+                        "Enter numeric device ID:",
+                        validate=lambda x: x.isdigit() and int(x) > 0,
+                    ).ask()
+
+                    if device_input:
+                        new_device = int(device_input)
+
+                        # Warn if device ID not in enum
+                        from fit_tool.profile.profile_type import GarminProduct
+
+                        try:
+                            GarminProduct(new_device)
+                        except ValueError:
+                            console.print(
+                                f"\n[yellow]⚠ Warning: Device ID {new_device} is not recognized in the "
+                                f"GarminProduct enum. The profile will still be updated.[/yellow]"
+                            )
+                else:
+                    new_device = device_id
+
+                # Always use Garmin manufacturer
+                from fit_tool.profile.profile_type import Manufacturer
+
+                new_manufacturer = Manufacturer.GARMIN.value
+
         # Update profile with provided values
         try:
             self.update_profile(
@@ -1084,6 +1305,8 @@ class ProfileManager:
                 garmin_username=new_username if new_username else None,
                 garmin_password=new_password if new_password else None,
                 fitfiles_path=Path(new_path) if new_path else None,
+                manufacturer=new_manufacturer,
+                device=new_device,
             )
             console.print("\n[green]✓ Profile updated successfully![/green]")
         except ValueError as e:

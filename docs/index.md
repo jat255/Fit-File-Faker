@@ -12,7 +12,7 @@
 
 </div>
 
-This application allows you to easily modify [FIT](https://developer.garmin.com/fit/overview/) files to make them appear to come from a Garmin device (Edge 830, currently) and upload them to Garmin Connect using the [`garth`](https://github.com/matin/garth/) library. The FIT editing is done using Stages Cycling's [`fit_tool`](https://bitbucket.org/stagescycling/python_fit_tool/src/main/) library.
+This application allows you to easily modify [FIT](https://developer.garmin.com/fit/overview/) files to make them appear to come from a Garmin device (Edge 830 by default, or any supported Garmin cycling device) and upload them to Garmin Connect using the [`garth`](https://github.com/matin/garth/) library. The FIT editing is done using Stages Cycling's [`fit_tool`](https://bitbucket.org/stagescycling/python_fit_tool/src/main/) library.
 
 !!! support "Support This Project"
     If FIT File Faker saves you time or enhances your training workflow, consider [buying me a coffee ☕](https://ko-fi.com/josh851356). Your support helps maintain and improve this project!
@@ -143,10 +143,11 @@ As of version 2.0.0, FIT File Faker now supports **multi-profile configuration**
     ```
 
     This supports:
-    
+
     - **Multiple Garmin accounts** with isolated credentials
     - **Multiple trainer apps** (TPV, Zwift, MyWhoosh)
     - **Auto-detection** of FIT file directories
+    - **Customizable device simulation** (Edge 830, Edge 1030, Tacx, etc.)
     - **Profile-specific monitoring** and uploads
 
 
@@ -165,6 +166,72 @@ For backward compatibility, the tool still supports the legacy single-profile fo
 !!! warning "Automatic Migration"
     When you first run v2.0.0+, legacy configs are automatically migrated to the multi-profile format with a "default" profile.
 
+## Device Simulation
+
+By default, FIT File Faker modifies files to appear as if they came from a **Garmin Edge 830**. However, each profile can be configured to simulate a different Garmin device.
+
+### Supported Devices
+
+The tool supports simulation of any Garmin cycling/training device, including:
+
+- **Edge Series**: Edge 130, Edge 520, Edge 530, Edge 830, Edge 1030, Edge 1040, etc.
+- **Tacx Trainers**: Tacx NEO series and other Tacx smart trainers
+- **Training Devices**: Various other Garmin training computers
+
+!!! info "Device Selection"
+    During profile creation or editing, you can optionally customize which Garmin device to simulate. The tool presents a filtered list of ~66 supported Garmin cycling and training devices.
+
+### Customizing Device Simulation
+
+When creating or editing a profile via `--config-menu`, you'll be prompted:
+
+```
+? Customize device simulation? (default: Garmin Edge 830) (y/N)
+```
+
+If you select **Yes**, you can:
+
+1. **Choose from a list** of supported Garmin devices (Edge, Tacx, Training series)
+2. **Enter a custom numeric device ID** for newer devices not yet in the list
+
+!!! tip "Custom Device IDs"
+    If you enter a numeric device ID that's not recognized, the tool will show a warning but still create/update the profile. This allows using newer Garmin devices that may not be in the library yet.
+
+### Example: Different Devices for Different Profiles
+
+```json
+{
+  "profiles": [
+    {
+      "name": "tpv",
+      "app_type": "tp_virtual",
+      "garmin_username": "user@example.com",
+      "garmin_password": "secret",
+      "fitfiles_path": "/path/to/tpv",
+      "manufacturer": 1,
+      "device": 3122  // Edge 830 (default)
+    },
+    {
+      "name": "zwift",
+      "app_type": "zwift",
+      "garmin_username": "user@example.com",
+      "garmin_password": "secret",
+      "fitfiles_path": "/path/to/zwift",
+      "manufacturer": 1,
+      "device": 2713  // Edge 1030
+    }
+  ]
+}
+```
+
+### Why Customize Device Simulation?
+
+- **Match your actual device**: If you own an Edge 1030, simulate that device for consistency
+- **Testing**: Try different devices to see how Garmin Connect responds
+- **Feature compatibility**: Some Garmin devices may enable different features in Garmin Connect
+
+!!! note "Backward Compatibility"
+    Existing profiles without device settings automatically default to Edge 830, maintaining the original behavior.
 
 ### Initial Setup (Legacy)
 

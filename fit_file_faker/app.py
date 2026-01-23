@@ -210,6 +210,7 @@ class NewFileEventHandler(PatternMatchingEventHandler):
 
                 # Edit the file and upload it
                 with NamedTemporaryFile(delete=True, delete_on_close=False) as fp:
+                    fit_editor.set_profile(self.profile)
                     output = fit_editor.edit_fit(modified_file, output=Path(fp.name))
                     if output:
                         _logger.info(
@@ -381,6 +382,7 @@ def upload_all(
 
         if not preinitialize:
             with NamedTemporaryFile(delete=True, delete_on_close=False) as fp:
+                fit_editor.set_profile(profile)
                 output = fit_editor.edit_fit(dir.joinpath(f), output=Path(fp.name))
                 if output:
                     _logger.info("Uploading modified file to Garmin Connect")
@@ -714,6 +716,7 @@ def run():
     if p.is_file():
         # if p is a single file, do edit and upload
         _logger.debug(f'"{p}" is a single file')
+        fit_editor.set_profile(profile)
         output_path = fit_editor.edit_fit(p, dryrun=args.dryrun)
         if (args.upload or args.upload_all) and output_path:
             upload(output_path, profile=profile, original_path=p, dryrun=args.dryrun)
@@ -729,6 +732,7 @@ def run():
         else:
             files_to_edit = list(p.glob("*.fit", case_sensitive=False))
             _logger.info(f"Found {len(files_to_edit)} FIT files to edit")
+            fit_editor.set_profile(profile)
             for f in files_to_edit:
                 fit_editor.edit_fit(f, dryrun=args.dryrun)
 

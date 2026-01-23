@@ -62,7 +62,8 @@ class FitEditor:
 
     This class provides methods to read, modify, and save FIT files from
     various cycling platforms (TrainingPeaks Virtual, Zwift, COROS, etc.),
-    converting them to appear as if they came from a Garmin Edge 830 device.
+    converting them to appear as if they came from a Garmin Edge 830 device
+    (or a custom device if configured via profile).
 
     The editor modifies only device metadata (manufacturer, product IDs) while
     preserving all activity data including records, laps, and sessions. This
@@ -86,13 +87,31 @@ class FitEditor:
         ... )
     """
 
-    def __init__(self):
+    def __init__(self, profile=None):
         """Initialize the FIT editor.
+
+        Args:
+            profile: Optional Profile object for device simulation settings.
+                If None, defaults to Garmin Edge 830.
 
         Applies a logging filter to suppress verbose fit_tool warnings.
         """
         # Apply the log filter to suppress noisy fit_tool warnings
         logging.getLogger("fit_tool").addFilter(FitFileLogFilter())
+        self.profile = profile
+
+    def set_profile(self, profile):
+        """Set the profile to use for device simulation.
+
+        Args:
+            profile: Profile object containing manufacturer and device settings.
+
+        Examples:
+            >>> from fit_file_faker.config import profile_manager
+            >>> profile = profile_manager.get_profile("tpv")
+            >>> fit_editor.set_profile(profile)
+        """
+        self.profile = profile
 
     def print_message(
         self, prefix: str, message: FileIdMessage | DeviceInfoMessage
@@ -198,8 +217,13 @@ class FitEditor:
             pass
 
         if self._should_modify_manufacturer(m.manufacturer):
-            new_m.manufacturer = Manufacturer.GARMIN.value
-            new_m.product = GarminProduct.EDGE_830.value
+            # Use profile device settings if available, otherwise defaults
+            if self.profile:
+                new_m.manufacturer = self.profile.manufacturer
+                new_m.product = self.profile.device
+            else:
+                new_m.manufacturer = Manufacturer.GARMIN.value
+                new_m.product = GarminProduct.EDGE_830.value
             _logger.debug("    Modifying values")
             self.print_message(f"    New Record: {message_num}", new_m)
 
@@ -461,13 +485,22 @@ class FitEditor:
                         _logger.debug("    Modifying values")
                         _logger.debug(f"garmin_product: {message.garmin_product}")
                         _logger.debug(f"product: {message.product}")
+
+                        # Use profile device settings if available, otherwise defaults
+                        if self.profile:
+                            target_manufacturer = self.profile.manufacturer
+                            target_device = self.profile.device
+                        else:
+                            target_manufacturer = Manufacturer.GARMIN.value
+                            target_device = GarminProduct.EDGE_830.value
+
                         # have not seen this set explicitly in testing, but probable good to set regardless
                         if message.garmin_product:  # pragma: no cover
-                            message.garmin_product = GarminProduct.EDGE_830.value
+                            message.garmin_product = target_device
                         if message.product:
-                            message.product = GarminProduct.EDGE_830.value  # type: ignore
+                            message.product = target_device  # type: ignore
                         if message.manufacturer:
-                            message.manufacturer = Manufacturer.GARMIN.value
+                            message.manufacturer = target_manufacturer
                         message.product_name = ""
                         self.print_message(f"    New Record: {i}", message)
 
