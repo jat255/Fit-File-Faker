@@ -36,7 +36,7 @@ This launches the interactive TUI (Text User Interface) for profile management. 
 ┏━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Name       ┃ App        ┃ Garmin User ┃ FIT Path                                 ┃
 ┡━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ TPV ⭐     │ Tp Virtual │ j123@gm...  │ ...h/TPVirtual/C123456789012345/FITFiles │
+│ TPV ⭐     │ TPVirtual  │ j123@gm...  │ ...h/TPVirtual/C123456789012345/FITFiles │
 │ zwift      │ Zwift      │ j234@gm...  │ /Users/test/Documents/Zwift/Activities   │
 │ mywhoosh   │ Mywhoosh   │ j123@gm...  │ ...on Support/Epic/MyWhoosh/Content/Data │
 │ custom     │ Custom     │ j789@gm...  │ /Users/test/tmp                          │
@@ -62,7 +62,7 @@ Example output:
 ┏━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Name       ┃ App        ┃ Garmin User ┃ FIT Path                                 ┃
 ┡━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ TPV ⭐     │ Tp Virtual │ j123@gm...  │ ...h/TPVirtual/C123456789012345/FITFiles │
+│ TPV ⭐     │ TPVirtual  │ j123@gm...  │ ...h/TPVirtual/C123456789012345/FITFiles │
 │ zwift      │ Zwift      │ j234@gm...  │ /Users/test/Documents/Zwift/Activities   │
 │ mywhoosh   │ Mywhoosh   │ j123@gm...  │ ...on Support/Epic/MyWhoosh/Content/Data │
 │ custom     │ Custom     │ j789@gm...  │ /Users/test/tmp                          │

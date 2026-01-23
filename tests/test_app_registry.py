@@ -24,6 +24,11 @@ class TestTPVDetector:
         detector = TPVDetector()
         assert detector.get_display_name() == "TrainingPeaks Virtual"
 
+    def test_short_name(self):
+        """Test that TPV detector returns correct short name."""
+        detector = TPVDetector()
+        assert detector.get_short_name() == "TPVirtual"
+
     def test_validate_path_exists(self, tmp_path):
         """Test that validation succeeds for existing directory."""
         detector = TPVDetector()
@@ -53,6 +58,11 @@ class TestZwiftDetector:
         """Test that Zwift detector returns correct display name."""
         detector = ZwiftDetector()
         assert detector.get_display_name() == "Zwift"
+
+    def test_short_name(self):
+        """Test that Zwift detector returns correct short name."""
+        detector = ZwiftDetector()
+        assert detector.get_short_name() == "Zwift"
 
     def test_validate_path_exists(self, tmp_path):
         """Test that validation succeeds for existing directory."""
@@ -143,6 +153,11 @@ class TestMyWhooshDetector:
         """Test that MyWhoosh detector returns correct display name."""
         detector = MyWhooshDetector()
         assert detector.get_display_name() == "MyWhoosh"
+
+    def test_short_name(self):
+        """Test that MyWhoosh detector returns correct short name."""
+        detector = MyWhooshDetector()
+        assert detector.get_short_name() == "MyWhoosh"
 
     def test_validate_path_exists(self, tmp_path):
         """Test that validation succeeds for existing directory."""
@@ -235,6 +250,11 @@ class TestCustomDetector:
         detector = CustomDetector()
         assert detector.get_display_name() == "Custom (Manual Path)"
 
+    def test_short_name(self):
+        """Test that Custom detector returns correct short name."""
+        detector = CustomDetector()
+        assert detector.get_short_name() == "Custom"
+
     def test_get_default_path_returns_none(self):
         """Test that Custom detector always returns None for default path."""
         detector = CustomDetector()
@@ -296,3 +316,205 @@ class TestAppRegistry:
         assert detector1 is not detector2
         assert isinstance(detector1, ZwiftDetector)
         assert isinstance(detector2, ZwiftDetector)
+
+    def test_get_detector_invalid_app_type(self):
+        """Test that get_detector raises ValueError for invalid app type."""
+        import pytest
+
+        # Create an invalid AppType-like object
+        class InvalidAppType:
+            pass
+
+        with pytest.raises(ValueError) as exc_info:
+            get_detector(InvalidAppType())  # type: ignore
+
+        assert "No detector registered" in str(exc_info.value)
+
+
+class TestTPVDetectorDefaultPath:
+    """Tests for TPV detector default path detection."""
+
+    def test_get_default_path_returns_none_on_error(self, monkeypatch):
+        """Test that get_default_path returns None when get_tpv_folder fails."""
+
+        # Mock get_tpv_folder to raise an exception
+        def mock_get_tpv_folder(path):
+            raise RuntimeError("TPV folder detection failed")
+
+        monkeypatch.setattr("fit_file_faker.config.get_tpv_folder", mock_get_tpv_folder)
+
+        detector = TPVDetector()
+        result = detector.get_default_path()
+
+        assert result is None
+
+    def test_get_default_path_returns_none_when_base_not_exists(self, monkeypatch):
+        """Test that get_default_path returns None when base directory doesn't exist."""
+        # Mock get_tpv_folder to return a non-existent path
+        monkeypatch.setattr(
+            "fit_file_faker.config.get_tpv_folder",
+            lambda path: Path("/nonexistent/path"),
+        )
+
+        detector = TPVDetector()
+        result = detector.get_default_path()
+
+        assert result is None
+
+    def test_get_default_path_returns_none_when_no_user_folders(
+        self, monkeypatch, tmp_path
+    ):
+        """Test that get_default_path returns None when no user folders found."""
+        base_dir = tmp_path / "tpv_test"
+        base_dir.mkdir()
+
+        # Mock get_tpv_folder to return our test directory
+        monkeypatch.setattr(
+            "fit_file_faker.config.get_tpv_folder", lambda path: base_dir
+        )
+
+        detector = TPVDetector()
+        result = detector.get_default_path()
+
+        assert result is None
+
+    def test_get_default_path_finds_user_folder(self, monkeypatch, tmp_path):
+        """Test that get_default_path finds and returns user folder's FITFiles directory."""
+        base_dir = tmp_path / "tpv_base"
+        base_dir.mkdir()
+
+        # Create a user folder with 16-character hex name
+        user_folder = base_dir / ("a" * 16)
+        user_folder.mkdir()
+        fit_files_dir = user_folder / "FITFiles"
+        fit_files_dir.mkdir()
+
+        # Mock get_tpv_folder to return our test directory
+        monkeypatch.setattr(
+            "fit_file_faker.config.get_tpv_folder", lambda path: base_dir
+        )
+
+        detector = TPVDetector()
+        result = detector.get_default_path()
+
+        assert result == fit_files_dir
+
+
+class TestZwiftDetectorPlatformPaths:
+    """Tests for Zwift detector platform-specific paths."""
+
+    def test_get_default_path_linux_proton(self, monkeypatch, tmp_path):
+        """Test Zwift default path detection on Linux (Steam Proton)."""
+        monkeypatch.setattr("sys.platform", "linux")
+
+        # Create mock Proton Zwift directory
+        zwift_dir = (
+            tmp_path
+            / ".steam"
+            / "steam"
+            / "steamapps"
+            / "compatdata"
+            / "1134130"
+            / "pfx"
+            / "drive_c"
+            / "users"
+            / "steamuser"
+            / "Documents"
+            / "Zwift"
+            / "Activities"
+        )
+        zwift_dir.mkdir(parents=True)
+
+        # Mock Path.home() to return our tmp_path
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        detector = ZwiftDetector()
+        result = detector.get_default_path()
+
+        assert result == zwift_dir
+
+    def test_get_default_path_linux_native(self, monkeypatch, tmp_path):
+        """Test Zwift default path detection on Linux (native)."""
+        monkeypatch.setattr("sys.platform", "linux")
+
+        # Create mock native Linux Zwift directory (no Wine/Proton)
+        zwift_dir = tmp_path / "Documents" / "Zwift" / "Activities"
+        zwift_dir.mkdir(parents=True)
+
+        # Mock Path.home() to return our tmp_path
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        detector = ZwiftDetector()
+        result = detector.get_default_path()
+
+        assert result == zwift_dir
+
+    def test_get_default_path_linux_no_paths_found(self, monkeypatch, tmp_path):
+        """Test Zwift returns None on Linux when no paths exist."""
+        monkeypatch.setattr("sys.platform", "linux")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        detector = ZwiftDetector()
+        result = detector.get_default_path()
+
+        assert result is None
+
+
+class TestMyWhooshDetectorWindowsPermissions:
+    """Tests for MyWhoosh detector Windows permission handling."""
+
+    def test_get_default_path_windows_permission_error(self, monkeypatch, tmp_path):
+        """Test that MyWhoosh handles PermissionError gracefully on Windows."""
+        monkeypatch.setattr("sys.platform", "win32")
+
+        # Mock Path.home() to return our tmp_path
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        # Create the packages directory
+        packages_dir = tmp_path / "AppData" / "Local" / "Packages"
+        packages_dir.mkdir(parents=True)
+
+        # Mock iterdir to raise PermissionError
+        def mock_iterdir(self):
+            raise PermissionError("Access denied")
+
+        monkeypatch.setattr("pathlib.Path.iterdir", mock_iterdir)
+
+        detector = MyWhooshDetector()
+        result = detector.get_default_path()
+
+        assert result is None
+
+    def test_get_default_path_windows_os_error(self, monkeypatch, tmp_path):
+        """Test that MyWhoosh handles OSError gracefully on Windows."""
+        monkeypatch.setattr("sys.platform", "win32")
+
+        # Mock Path.home() to return our tmp_path
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        # Create the packages directory
+        packages_dir = tmp_path / "AppData" / "Local" / "Packages"
+        packages_dir.mkdir(parents=True)
+
+        # Mock iterdir to raise OSError
+        def mock_iterdir(self):
+            raise OSError("I/O error")
+
+        monkeypatch.setattr("pathlib.Path.iterdir", mock_iterdir)
+
+        detector = MyWhooshDetector()
+        result = detector.get_default_path()
+
+        assert result is None
+
+    def test_get_default_path_windows_packages_not_exists(self, monkeypatch, tmp_path):
+        """Test that MyWhoosh returns None when Packages dir doesn't exist on Windows."""
+        monkeypatch.setattr("sys.platform", "win32")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        # Don't create the packages directory
+
+        detector = MyWhooshDetector()
+        result = detector.get_default_path()
+
+        assert result is None

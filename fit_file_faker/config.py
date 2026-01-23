@@ -385,10 +385,16 @@ class ConfigManager:
         if excluded_keys is None:
             excluded_keys = []
 
+        # Get default profile for validation
+        default_profile = self.config.get_default_profile()
+        if not default_profile:
+            _logger.error("No default profile configured")
+            return False
+
         missing_vals = []
         for k in self.config_keys:
             if (
-                not hasattr(self.config, k) or getattr(self.config, k) is None
+                not hasattr(default_profile, k) or getattr(default_profile, k) is None
             ) and k not in excluded_keys:
                 missing_vals.append(k)
 
@@ -444,25 +450,41 @@ class ConfigManager:
         if excluded_keys is None:
             excluded_keys = []
 
+        # Get or create default profile
+        default_profile = self.config.get_default_profile()
+        if not default_profile:
+            # Create a default profile if none exists
+            default_profile = Profile(
+                name="default",
+                app_type=AppType.TP_VIRTUAL,
+                garmin_username="",
+                garmin_password="",
+                fitfiles_path=Path.home(),
+            )
+            self.config.profiles.append(default_profile)
+            self.config.default_profile = "default"
+
         for k in self.config_keys:
             if (
-                getattr(self.config, k) is None or overwrite_existing_vals
+                getattr(default_profile, k) is None
+                or not getattr(default_profile, k)
+                or overwrite_existing_vals
             ) and k not in excluded_keys:
                 valid_input = False
                 while not valid_input:
                     try:
                         if (
-                            not hasattr(self.config, k)
-                            or getattr(self.config, k) is None
+                            not hasattr(default_profile, k)
+                            or getattr(default_profile, k) is None
                         ):
                             _logger.warning(f'Required value "{k}" not found in config')
                         msg = f'Enter value to use for "{k}"'
 
-                        if hasattr(self.config, k) and getattr(self.config, k):
-                            msg += f'\nor press enter to use existing value of "{getattr(self.config, k)}"'
+                        if hasattr(default_profile, k) and getattr(default_profile, k):
+                            msg += f'\nor press enter to use existing value of "{getattr(default_profile, k)}"'
                             if k == "garmin_password":
                                 msg = msg.replace(
-                                    getattr(self.config, k), "<**hidden**>"
+                                    getattr(default_profile, k), "<**hidden**>"
                                 )
 
                         if k != "fitfiles_path":
@@ -473,18 +495,22 @@ class ConfigManager:
                         else:
                             val = str(
                                 get_fitfiles_path(
-                                    Path(self.config.fitfiles_path).parent.parent
-                                    if self.config.fitfiles_path
+                                    Path(
+                                        getattr(default_profile, "fitfiles_path")
+                                    ).parent.parent
+                                    if getattr(default_profile, "fitfiles_path")
                                     else None
                                 )
                             )
 
                         if val:
                             valid_input = True
-                            setattr(self.config, k, val)
-                        elif hasattr(self.config, k) and getattr(self.config, k):
+                            setattr(default_profile, k, val)
+                        elif hasattr(default_profile, k) and getattr(
+                            default_profile, k
+                        ):
                             valid_input = True
-                            val = getattr(self.config, k)
+                            val = getattr(default_profile, k)
                         else:
                             _logger.warning(
                                 "Entered input was not valid, please try again (or press Ctrl-C to cancel)"
@@ -498,11 +524,11 @@ class ConfigManager:
 
         config_content = json.dumps(asdict(self.config), indent=2, cls=PathEncoder)
         if (
-            hasattr(self.config, "garmin_password")
-            and getattr(self.config, "garmin_password") is not None
+            hasattr(default_profile, "garmin_password")
+            and getattr(default_profile, "garmin_password") is not None
         ):
             config_content = config_content.replace(
-                cast(str, self.config.garmin_password), "<**hidden**>"
+                cast(str, default_profile.garmin_password), "<**hidden**>"
             )
         _logger.info(f"Config file is now:\n{config_content}")
 
@@ -856,8 +882,11 @@ class ProfileManager:
             if profile.name == self.config_manager.config.default_profile:
                 name_display = f"{profile.name} ⭐"
 
-            # Format app type for display
-            app_display = profile.app_type.value.replace("_", " ").title()
+            # Format app type for display using detector's short name
+            from fit_file_faker.app_registry import get_detector
+
+            detector = get_detector(profile.app_type)
+            app_display = detector.get_short_name()
 
             # Truncate long paths
             path_str = str(profile.fitfiles_path)

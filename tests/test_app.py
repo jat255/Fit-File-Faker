@@ -14,6 +14,7 @@ from fit_file_faker.app import (
     FILES_UPLOADED_NAME,
     NewFileEventHandler,
     monitor,
+    select_profile,
     upload,
     upload_all,
 )
@@ -27,26 +28,30 @@ from .conftest import MockGarthHTTPError
 
 @pytest.fixture
 def mock_valid_config():
-    """Create a valid mock config_manager."""
+    """Create a valid mock config_manager with profile."""
     with patch("fit_file_faker.app.config_manager") as mock_config:
         mock_config.is_valid.return_value = True
-        mock_config.config.fitfiles_path = None
-        mock_config.config.garmin_username = "test@example.com"
-        mock_config.config.garmin_password = "testpass"
+        # Create a mock profile
+        mock_profile = MagicMock()
+        mock_profile.garmin_username = "test@example.com"
+        mock_profile.garmin_password = "testpass"
+        mock_profile.fitfiles_path = None
+        mock_config.config.get_default_profile.return_value = mock_profile
         yield mock_config
 
 
 class TestUploadFunction:
     """Tests for the upload functionality with mocked Garmin requests."""
 
-    def test_upload_success(self, tpv_fit_file, mock_garth_basic):
+    def test_upload_success(self, tpv_fit_file, mock_garth_basic, mock_valid_config):
         """Test successful file upload to Garmin Connect."""
         mock_garth, mock_garth_exc = mock_garth_basic
+        mock_profile = mock_valid_config.config.get_default_profile()
 
         with patch.dict(
             "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
         ):
-            upload(tpv_fit_file, dryrun=False)
+            upload(tpv_fit_file, profile=mock_profile, dryrun=False)
             mock_garth.client.upload.assert_called_once()
 
     def test_upload_with_login(
@@ -54,26 +59,35 @@ class TestUploadFunction:
     ):
         """Test upload that requires login."""
         mock_garth, mock_garth_exc = mock_garth_with_login
+        mock_profile = mock_valid_config.config.get_default_profile()
 
         with patch.dict(
             "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
         ):
-            upload(tpv_fit_file, dryrun=False)
+            upload(tpv_fit_file, profile=mock_profile, dryrun=False)
 
             # Verify login was called with config credentials
             mock_garth.login.assert_called_once_with("test@example.com", "testpass")
             mock_garth.save.assert_called_once()
 
-    def test_upload_http_errors(self, tpv_fit_file, mock_garth_basic, caplog):
+    def test_upload_http_errors(
+        self, tpv_fit_file, mock_garth_basic, caplog, mock_valid_config
+    ):
         """Test upload handling HTTP errors - 409 conflict handled gracefully, others raise."""
         mock_garth, mock_garth_exc = mock_garth_basic
+        mock_profile = mock_valid_config.config.get_default_profile()
 
         # Test 409 conflict (duplicate activity) - should be handled gracefully
         mock_garth.client.upload = Mock(side_effect=MockGarthHTTPError(409))
         with patch.dict(
             "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
         ):
-            upload(tpv_fit_file, original_path=Path("test.fit"), dryrun=False)
+            upload(
+                tpv_fit_file,
+                profile=mock_profile,
+                original_path=Path("test.fit"),
+                dryrun=False,
+            )
             assert "conflict" in caplog.text.lower() or "409" in caplog.text
 
         # Test non-409 errors (500) - should raise exception
@@ -83,16 +97,22 @@ class TestUploadFunction:
             "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
         ):
             with pytest.raises(MockGarthHTTPError):
-                upload(tpv_fit_file, original_path=Path("test.fit"), dryrun=False)
+                upload(
+                    tpv_fit_file,
+                    profile=mock_profile,
+                    original_path=Path("test.fit"),
+                    dryrun=False,
+                )
 
-    def test_upload_dryrun(self, tpv_fit_file, mock_garth_basic):
+    def test_upload_dryrun(self, tpv_fit_file, mock_garth_basic, mock_valid_config):
         """Test that dryrun doesn't actually upload."""
         mock_garth, mock_garth_exc = mock_garth_basic
+        mock_profile = mock_valid_config.config.get_default_profile()
 
         with patch.dict(
             "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
         ):
-            upload(tpv_fit_file, dryrun=True)
+            upload(tpv_fit_file, profile=mock_profile, dryrun=True)
             mock_garth.client.upload.assert_not_called()
 
     def test_upload_interactive_credentials(self, tpv_fit_file, mock_garth_with_login):
@@ -112,11 +132,13 @@ class TestUploadFunction:
             )
             mock_questionary.password.return_value.ask.return_value = "interactive_pass"
 
-            # Mock config with no credentials
-            mock_config_manager.config.garmin_username = None
-            mock_config_manager.config.garmin_password = None
+            # Mock profile with no credentials
+            mock_profile = MagicMock()
+            mock_profile.garmin_username = None
+            mock_profile.garmin_password = None
+            mock_config_manager.config.get_default_profile.return_value = mock_profile
 
-            upload(tpv_fit_file, dryrun=False)
+            upload(tpv_fit_file, profile=mock_profile, dryrun=False)
 
             # Verify interactive prompts were used
             mock_questionary.text.assert_called_once()
@@ -144,8 +166,13 @@ class TestUploadAllFunction:
         # Mock fit_editor to return a path
         mock_fit_editor.edit_fit.return_value = temp_dir / "test_activity_modified.fit"
 
+        # Create mock profile
+        mock_profile = MagicMock()
+        mock_profile.garmin_username = "test@example.com"
+        mock_profile.garmin_password = "testpass"
+
         # Run upload_all
-        upload_all(temp_dir, dryrun=False)
+        upload_all(temp_dir, profile=mock_profile, dryrun=False)
 
         # Verify edit and upload were called
         assert mock_fit_editor.edit_fit.called
@@ -176,8 +203,13 @@ class TestUploadAllFunction:
         with uploaded_list.open("w") as f:
             json.dump(["test_activity.fit"], f)
 
+        # Create mock profile
+        mock_profile = MagicMock()
+        mock_profile.garmin_username = "test@example.com"
+        mock_profile.garmin_password = "testpass"
+
         # Run upload_all
-        upload_all(temp_dir, dryrun=False)
+        upload_all(temp_dir, profile=mock_profile, dryrun=False)
 
         # Should NOT process the file
         mock_fit_editor.edit_fit.assert_not_called()
@@ -195,8 +227,13 @@ class TestUploadAllFunction:
         test_file = temp_dir / "test_activity_modified.fit"
         shutil.copy(tpv_fit_file, test_file)
 
+        # Create mock profile
+        mock_profile = MagicMock()
+        mock_profile.garmin_username = "test@example.com"
+        mock_profile.garmin_password = "testpass"
+
         # Run upload_all
-        upload_all(temp_dir, dryrun=False)
+        upload_all(temp_dir, profile=mock_profile, dryrun=False)
 
         # Should NOT process modified files
         mock_fit_editor.edit_fit.assert_not_called()
@@ -211,8 +248,13 @@ class TestUploadAllFunction:
         shutil.copy(tpv_fit_file, test_file1)
         shutil.copy(tpv_fit_file, test_file2)
 
+        # Create mock profile
+        mock_profile = MagicMock()
+        mock_profile.garmin_username = "test@example.com"
+        mock_profile.garmin_password = "testpass"
+
         # Run with preinitialize
-        upload_all(temp_dir, preinitialize=True, dryrun=False)
+        upload_all(temp_dir, profile=mock_profile, preinitialize=True, dryrun=False)
 
         # Check uploaded files list
         uploaded_list = temp_dir / FILES_UPLOADED_NAME
@@ -237,8 +279,13 @@ class TestUploadAllFunction:
 
         mock_fit_editor.edit_fit.return_value = temp_dir / "test_modified.fit"
 
+        # Create mock profile
+        mock_profile = MagicMock()
+        mock_profile.garmin_username = "test@example.com"
+        mock_profile.garmin_password = "testpass"
+
         # Run with dryrun
-        upload_all(temp_dir, dryrun=True)
+        upload_all(temp_dir, profile=mock_profile, dryrun=True)
 
         # Uploaded files list should exist but be empty initially
         uploaded_list = temp_dir / FILES_UPLOADED_NAME
@@ -254,9 +301,10 @@ class TestNewFileEventHandler:
 
     def test_event_handler_initialization(self):
         """Test NewFileEventHandler initialization."""
-        handler = NewFileEventHandler(dryrun=False)
+        mock_profile = MagicMock()
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=False)
 
-        assert handler.patterns == ["*.fit"]
+        assert handler.patterns == ["*.fit", "MyNewActivity-*.fit"]
         assert handler.ignore_directories is True
         assert handler.case_sensitive is False
 
@@ -264,7 +312,8 @@ class TestNewFileEventHandler:
     @patch("fit_file_faker.app.time.sleep")
     def test_on_created_processes_file(self, mock_sleep, mock_upload_all, temp_dir):
         """Test that new file creation triggers processing."""
-        handler = NewFileEventHandler(dryrun=False)
+        mock_profile = MagicMock()
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=False)
 
         # Create a mock event
         from watchdog.events import FileCreatedEvent
@@ -280,14 +329,15 @@ class TestNewFileEventHandler:
         # Should sleep for 5 seconds (to ensure file is fully written)
         mock_sleep.assert_called_once_with(5)
 
-        # Should call upload_all with the parent directory
-        mock_upload_all.assert_called_once_with(temp_dir)
+        # Should call upload_all with the parent directory and profile
+        mock_upload_all.assert_called_once_with(temp_dir, profile=mock_profile)
 
     @patch("fit_file_faker.app.upload_all")
     @patch("fit_file_faker.app.time.sleep")
     def test_on_created_dryrun(self, mock_sleep, mock_upload_all, temp_dir):
         """Test that dryrun doesn't process files."""
-        handler = NewFileEventHandler(dryrun=True)
+        mock_profile = MagicMock()
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=True)
 
         from watchdog.events import FileCreatedEvent
 
@@ -303,6 +353,304 @@ class TestNewFileEventHandler:
         mock_sleep.assert_not_called()
         mock_upload_all.assert_not_called()
 
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_on_modified_processes_mywhoosh_file(
+        self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
+    ):
+        """Test that MyWhoosh file modifications trigger processing and upload."""
+        mock_profile = MagicMock()
+        mock_profile.name = "test_profile"
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=False)
+
+        # Create a mock MyWhoosh file
+        from watchdog.events import FileModifiedEvent
+
+        test_file = temp_dir / "MyNewActivity-12345.fit"
+        test_file.touch()
+
+        # Mock fit_editor to return a path (edit_fit receives the temp file path as output)
+        mock_output_file = temp_dir / "output_file.fit"
+        mock_fit_editor.edit_fit.return_value = mock_output_file
+
+        event = FileModifiedEvent(str(test_file))
+
+        # Trigger event
+        handler.on_modified(event)
+
+        # Should sleep for 5 seconds (to ensure file is fully written)
+        mock_sleep.assert_called_once_with(5)
+
+        # Should call edit_fit with the modified file
+        mock_fit_editor.edit_fit.assert_called_once()
+        call_args = mock_fit_editor.edit_fit.call_args
+        assert call_args[0][0] == test_file
+        # output parameter should be a Path object (the temp file path)
+        assert isinstance(call_args.kwargs["output"], Path)
+
+        # Should call upload with the output file
+        mock_upload.assert_called_once()
+        call_args = mock_upload.call_args
+        assert call_args[0][0] == mock_output_file
+        assert call_args.kwargs["profile"] == mock_profile
+        assert call_args.kwargs["original_path"] == test_file
+        assert call_args.kwargs["dryrun"] is False
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_on_modified_ignores_non_mywhoosh_files(
+        self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
+    ):
+        """Test that non-MyWhoosh file modifications are ignored."""
+        mock_profile = MagicMock()
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=False)
+
+        # Create a non-MyWhoosh FIT file
+        from watchdog.events import FileModifiedEvent
+
+        test_file = temp_dir / "regular_activity.fit"
+        test_file.touch()
+
+        event = FileModifiedEvent(str(test_file))
+
+        # Trigger event
+        handler.on_modified(event)
+
+        # Should NOT sleep or process
+        mock_sleep.assert_not_called()
+        mock_fit_editor.edit_fit.assert_not_called()
+        mock_upload.assert_not_called()
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_on_modified_dryrun(
+        self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
+    ):
+        """Test that dryrun doesn't process files."""
+        mock_profile = MagicMock()
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=True)
+
+        # Create a mock MyWhoosh file
+        from watchdog.events import FileModifiedEvent
+
+        test_file = temp_dir / "MyNewActivity-12345.fit"
+        test_file.touch()
+
+        event = FileModifiedEvent(str(test_file))
+
+        # Trigger event
+        handler.on_modified(event)
+
+        # Should NOT sleep or process in dryrun mode
+        mock_sleep.assert_not_called()
+        mock_fit_editor.edit_fit.assert_not_called()
+        mock_upload.assert_not_called()
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_on_modified_with_case_insensitive_pattern(
+        self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
+    ):
+        """Test that on_modified correctly handles different case variations."""
+        mock_profile = MagicMock()
+        mock_profile.name = "test_profile"
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=False)
+
+        # Create a mock MyWhoosh file with different case
+        from watchdog.events import FileModifiedEvent
+
+        test_file = temp_dir / "MYWHOOSH_Activity-12345.fit"
+        test_file.touch()
+
+        # Mock fit_editor to return a path
+        mock_output_file = temp_dir / "output_file.fit"
+        mock_fit_editor.edit_fit.return_value = mock_output_file
+
+        event = FileModifiedEvent(str(test_file))
+
+        # Trigger event
+        handler.on_modified(event)
+
+        # Should NOT process because the pattern is case-sensitive and looking for "MyNewActivity-"
+        mock_sleep.assert_not_called()
+        mock_fit_editor.edit_fit.assert_not_called()
+        mock_upload.assert_not_called()
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_on_modified_handles_edit_failure(
+        self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
+    ):
+        """Test that on_modified handles edit_fit returning None gracefully."""
+        mock_profile = MagicMock()
+        mock_profile.name = "test_profile"
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=False)
+
+        # Create a mock MyWhoosh file
+        from watchdog.events import FileModifiedEvent
+
+        test_file = temp_dir / "MyNewActivity-12345.fit"
+        test_file.touch()
+
+        # Mock fit_editor to return None (failure case)
+        mock_fit_editor.edit_fit.return_value = None
+
+        event = FileModifiedEvent(str(test_file))
+
+        # Trigger event
+        handler.on_modified(event)
+
+        # Should sleep and try to edit
+        mock_sleep.assert_called_once_with(5)
+        mock_fit_editor.edit_fit.assert_called_once()
+
+        # But should NOT try to upload if edit failed
+        mock_upload.assert_not_called()
+
+
+class TestSelectProfileFunction:
+    """Tests for the select_profile function."""
+
+    def test_select_profile_by_name_found(self):
+        """Test selecting a profile by name when it exists."""
+        mock_profile = MagicMock()
+        mock_profile.name = "test_profile"
+
+        with patch("fit_file_faker.app.profile_manager") as mock_pm:
+            mock_pm.get_profile.return_value = mock_profile
+
+            result = select_profile("test_profile")
+
+            assert result == mock_profile
+            mock_pm.get_profile.assert_called_once_with("test_profile")
+
+    def test_select_profile_by_name_not_found(self):
+        """Test selecting a profile by name when it doesn't exist raises ValueError."""
+        with patch("fit_file_faker.app.profile_manager") as mock_pm:
+            mock_pm.get_profile.return_value = None
+
+            with pytest.raises(ValueError) as exc_info:
+                select_profile("nonexistent_profile")
+
+            assert "nonexistent_profile" in str(exc_info.value)
+            assert "--list-profiles" in str(exc_info.value)
+
+    def test_select_profile_uses_default_when_available(self):
+        """Test that default profile is used when no name specified."""
+        mock_default = MagicMock()
+        mock_default.name = "default_profile"
+
+        with patch("fit_file_faker.app.config_manager") as mock_cm:
+            mock_cm.config.get_default_profile.return_value = mock_default
+            mock_cm.config.profiles = [mock_default]
+
+            result = select_profile(None)
+
+            assert result == mock_default
+            mock_cm.config.get_default_profile.assert_called_once()
+
+    def test_select_profile_raises_when_no_profiles_configured(self):
+        """Test that ValueError is raised when no profiles are configured."""
+        with patch("fit_file_faker.app.config_manager") as mock_cm:
+            mock_cm.config.get_default_profile.return_value = None
+            mock_cm.config.profiles = []
+
+            with pytest.raises(ValueError) as exc_info:
+                select_profile(None)
+
+            assert "No profiles configured" in str(exc_info.value)
+            assert "--config-menu" in str(exc_info.value)
+
+    def test_select_profile_uses_single_profile_when_only_one_exists(self):
+        """Test that single profile is used automatically when no default set."""
+        mock_profile = MagicMock()
+        mock_profile.name = "only_profile"
+
+        with patch("fit_file_faker.app.config_manager") as mock_cm:
+            mock_cm.config.get_default_profile.return_value = None
+            mock_cm.config.profiles = [mock_profile]
+
+            result = select_profile(None)
+
+            assert result == mock_profile
+
+    def test_select_profile_prompts_when_multiple_profiles_and_no_default(self):
+        """Test that user is prompted when multiple profiles exist and no default."""
+        mock_profile1 = MagicMock()
+        mock_profile1.name = "profile1"
+        mock_profile2 = MagicMock()
+        mock_profile2.name = "profile2"
+
+        with (
+            patch("fit_file_faker.app.config_manager") as mock_cm,
+            patch("fit_file_faker.app.profile_manager") as mock_pm,
+            patch("fit_file_faker.app.questionary") as mock_questionary,
+        ):
+            mock_cm.config.get_default_profile.return_value = None
+            mock_cm.config.profiles = [mock_profile1, mock_profile2]
+
+            # Mock questionary to return selected profile name
+            mock_questionary.select.return_value.ask.return_value = "profile1"
+
+            # Mock profile_manager.get_profile to return the selected profile
+            mock_pm.get_profile.return_value = mock_profile1
+
+            result = select_profile(None)
+
+            assert result == mock_profile1
+            mock_questionary.select.assert_called_once()
+            # Verify the choices include both profile names
+            call_args = mock_questionary.select.call_args
+            assert "profile1" in call_args.kwargs["choices"]
+            assert "profile2" in call_args.kwargs["choices"]
+
+    def test_select_profile_raises_when_no_profile_selected(self):
+        """Test that ValueError is raised when user doesn't select a profile."""
+        mock_profile1 = MagicMock()
+        mock_profile1.name = "profile1"
+        mock_profile2 = MagicMock()
+        mock_profile2.name = "profile2"
+
+        with (
+            patch("fit_file_faker.app.config_manager") as mock_cm,
+            patch("fit_file_faker.app.questionary") as mock_questionary,
+        ):
+            mock_cm.config.get_default_profile.return_value = None
+            mock_cm.config.profiles = [mock_profile1, mock_profile2]
+
+            # Mock questionary to return None (user cancelled)
+            mock_questionary.select.return_value.ask.return_value = None
+
+            with pytest.raises(ValueError) as exc_info:
+                select_profile(None)
+
+            assert "No profile selected" in str(exc_info.value)
+
+    def test_select_profile_explicit_name_overrides_default(self):
+        """Test that explicit profile name overrides default profile."""
+        mock_default = MagicMock()
+        mock_default.name = "default_profile"
+        mock_explicit = MagicMock()
+        mock_explicit.name = "explicit_profile"
+
+        with (
+            patch("fit_file_faker.app.profile_manager") as mock_pm,
+            patch("fit_file_faker.app.config_manager") as mock_cm,
+        ):
+            mock_pm.get_profile.return_value = mock_explicit
+            mock_cm.config.get_default_profile.return_value = mock_default
+
+            result = select_profile("explicit_profile")
+
+            assert result == mock_explicit
+            # Should not call get_default_profile because explicit name was provided
+            mock_pm.get_profile.assert_called_once_with("explicit_profile")
+
 
 class TestMonitorFunction:
     """Tests for directory monitoring functionality."""
@@ -314,8 +662,13 @@ class TestMonitorFunction:
         mock_observer_class.return_value = mock_observer
         mock_observer.is_alive.return_value = False  # Exit immediately
 
+        # Create mock profile
+        mock_profile = MagicMock()
+        mock_profile.garmin_username = "test@example.com"
+        mock_profile.garmin_password = "testpass"
+
         # Run monitor (will exit immediately because is_alive returns False)
-        monitor(temp_dir, dryrun=False)
+        monitor(temp_dir, profile=mock_profile, dryrun=False)
 
         # Verify observer was configured and started
         mock_observer.schedule.assert_called_once()
@@ -333,8 +686,13 @@ class TestMonitorFunction:
         mock_observer.is_alive.return_value = True
         mock_observer.join.side_effect = [KeyboardInterrupt(), None]
 
+        # Create mock profile
+        mock_profile = MagicMock()
+        mock_profile.garmin_username = "test@example.com"
+        mock_profile.garmin_password = "testpass"
+
         # Should handle interrupt gracefully
-        monitor(temp_dir, dryrun=False)
+        monitor(temp_dir, profile=mock_profile, dryrun=False)
 
         mock_observer.stop.assert_called_once()
 
@@ -460,26 +818,37 @@ class TestCLIIntegration:
         """Test CLI argument validation - setup flag, no args, and conflicting args."""
         from fit_file_faker.app import run
 
-        # Test -s/--initial-setup flag
-        with patch("fit_file_faker.app.config_manager") as mock_config:
-            mock_config.get_config_file_path.return_value = "/path/to/.config.json"
+        # Test -s/--initial-setup flag (now calls profile_manager.interactive_menu)
+        with patch("fit_file_faker.app.profile_manager") as mock_profile_mgr:
             with patch("sys.argv", ["fit-file-faker", "-s"]):
                 with pytest.raises(SystemExit) as exc_info:
                     with caplog.at_level(logging.INFO):
                         run()
 
-            mock_config.build_config_file.assert_called_once_with(
-                overwrite_existing_vals=True, rewrite_config=True
-            )
+            mock_profile_mgr.interactive_menu.assert_called_once()
             assert exc_info.value.code == 0
             assert any(
-                "Config file has been written to" in r.message for r in caplog.records
+                "Launching profile management menu" in r.message for r in caplog.records
             )
 
         # Test no arguments shows error
         caplog.clear()
-        with patch("fit_file_faker.app.config_manager") as mock_config:
+        with (
+            patch("fit_file_faker.app.config_manager") as mock_config,
+            patch("fit_file_faker.app.profile_manager") as mock_profile_manager,
+            patch("fit_file_faker.app.questionary") as mock_questionary,
+        ):
             mock_config.is_valid.return_value = True
+            # Mock config to have a default profile to avoid interactive menu
+            mock_profile = MagicMock()
+            mock_profile.name = "test"
+            mock_profile.fitfiles_path = "/tmp"
+            mock_config.config.get_default_profile.return_value = mock_profile
+            mock_config.config.profiles = [mock_profile]
+            # Mock profile_manager to avoid interactive menu calls
+            mock_profile_manager.interactive_menu.side_effect = SystemExit(0)
+            # Mock questionary to avoid interactive prompts
+            mock_questionary.select.return_value.ask.return_value = None
             with patch("sys.argv", ["fit-file-faker"]):
                 with pytest.raises(SystemExit) as exc_info:
                     with caplog.at_level(logging.ERROR):
@@ -506,18 +875,20 @@ class TestCLIIntegration:
                 for r in caplog.records
             )
 
-    def test_invalid_config_triggers_build(self, tmp_path):
-        """Test that invalid config triggers build_config_file."""
+    def test_profile_selection(self, tmp_path):
+        """Test that profile is properly selected when processing files."""
         from fit_file_faker.app import run
 
         # Create a test FIT file
         test_file = tmp_path / "test.fit"
         test_file.write_bytes(b"test content")
 
-        # Mock config_manager to be invalid initially
-        with patch("fit_file_faker.app.config_manager") as mock_config:
-            mock_config.is_valid.return_value = False
-            mock_config.config.fitfiles_path = None
+        # Mock profile manager to return a valid profile
+        with patch("fit_file_faker.app.select_profile") as mock_select:
+            mock_profile = MagicMock()
+            mock_profile.name = "test_profile"
+            mock_profile.fitfiles_path = None
+            mock_select.return_value = mock_profile
 
             with patch("sys.argv", ["fit-file-faker", "-d", str(test_file)]):
                 with patch("fit_file_faker.app.fit_editor.edit_fit") as mock_edit:
@@ -527,25 +898,23 @@ class TestCLIIntegration:
                     except SystemExit:
                         pass
 
-            # Verify build_config_file was called
-            mock_config.build_config_file.assert_called_once_with(
-                overwrite_existing_vals=False,
-                rewrite_config=True,
-                excluded_keys=["fitfiles_path"],
-            )
+            # Verify select_profile was called
+            mock_select.assert_called_once_with(None)
 
     def test_config_path_from_file(self, tmp_path):
-        """Test that path is read from config file when no input_path provided."""
+        """Test that path is read from profile when no input_path provided."""
         from fit_file_faker.app import run
 
         # Create test directory with FIT files
         config_path = tmp_path / "fitfiles"
         config_path.mkdir()
 
-        # Mock config_manager
-        with patch("fit_file_faker.app.config_manager") as mock_config:
-            mock_config.is_valid.return_value = True
-            mock_config.config.fitfiles_path = str(config_path)
+        # Mock profile with fitfiles_path
+        with patch("fit_file_faker.app.select_profile") as mock_select:
+            mock_profile = MagicMock()
+            mock_profile.name = "test_profile"
+            mock_profile.fitfiles_path = str(config_path)
+            mock_select.return_value = mock_profile
 
             with patch("sys.argv", ["fit-file-faker", "-ua"]):
                 with patch("fit_file_faker.app.upload_all") as mock_upload_all:
@@ -556,19 +925,30 @@ class TestCLIIntegration:
             call_args = mock_upload_all.call_args[0]
             assert call_args[0] == config_path
 
-    def test_missing_fitfiles_path_raises_error(self):
-        """Test that EnvironmentError is raised when fitfiles_path is None and no input provided."""
+    def test_missing_fitfiles_path_raises_error(self, caplog):
+        """Test that SystemExit is raised when fitfiles_path is None and no input provided."""
         from fit_file_faker.app import run
 
-        # Mock config_manager with None fitfiles_path
-        with patch("fit_file_faker.app.config_manager") as mock_config:
-            mock_config.is_valid.return_value = True
-            mock_config.config.fitfiles_path = None
+        # Mock profile with None fitfiles_path
+        with patch("fit_file_faker.app.select_profile") as mock_select:
+            mock_profile = MagicMock()
+            mock_profile.name = "test_profile"
+            mock_profile.fitfiles_path = None
+            mock_select.return_value = mock_profile
 
             # Run with -ua flag but no input_path
             with patch("sys.argv", ["fit-file-faker", "-ua"]):
-                with pytest.raises(EnvironmentError):
-                    run()
+                with pytest.raises(SystemExit) as exc_info:
+                    with caplog.at_level(logging.ERROR):
+                        run()
+
+            # Should exit with code 1
+            assert exc_info.value.code == 1
+            # Should log an error about missing fitfiles_path
+            assert any(
+                "does not have a fitfiles_path configured" in r.message
+                for r in caplog.records
+            )
 
     def test_nonexistent_path_exits(self, caplog):
         """Test that nonexistent path causes error and exit."""
@@ -621,10 +1001,13 @@ class TestCLIIntegration:
             mock_edit.assert_called_once()
             assert mock_edit.call_args[0][0] == test_file
 
-            # Verify upload was called
-            mock_upload.assert_called_once_with(
-                output_file, original_path=test_file, dryrun=False
-            )
+            # Verify upload was called with profile
+            mock_upload.assert_called_once()
+            call_args = mock_upload.call_args
+            assert call_args[0][0] == output_file  # First positional arg is file path
+            assert call_args.kwargs["original_path"] == test_file
+            assert call_args.kwargs["dryrun"] is False
+            assert "profile" in call_args.kwargs  # Profile should be passed
 
     def test_directory_upload_all(self, tmp_path):
         """Test upload_all with a directory."""
@@ -643,8 +1026,13 @@ class TestCLIIntegration:
                 with patch("fit_file_faker.app.upload_all") as mock_upload_all:
                     run()
 
-            # Verify upload_all was called
-            mock_upload_all.assert_called_once_with(test_dir, False, False)
+            # Verify upload_all was called with profile
+            mock_upload_all.assert_called_once()
+            call_args = mock_upload_all.call_args
+            assert call_args[0][0] == test_dir  # First positional arg is directory
+            assert call_args.kwargs["preinitialize"] is False
+            assert call_args.kwargs["dryrun"] is False
+            assert "profile" in call_args.kwargs  # Profile should be passed
 
     def test_directory_preinitialize(self, tmp_path):
         """Test preinitialize flag with a directory."""
@@ -664,7 +1052,12 @@ class TestCLIIntegration:
                     run()
 
             # Verify upload_all was called with preinitialize=True
-            mock_upload_all.assert_called_once_with(test_dir, True, False)
+            mock_upload_all.assert_called_once()
+            call_args = mock_upload_all.call_args
+            assert call_args[0][0] == test_dir  # First positional arg is directory
+            assert call_args.kwargs["preinitialize"] is True
+            assert call_args.kwargs["dryrun"] is False
+            assert "profile" in call_args.kwargs  # Profile should be passed
 
     def test_directory_monitor(self, tmp_path):
         """Test monitor mode with a directory."""
@@ -683,8 +1076,12 @@ class TestCLIIntegration:
                 with patch("fit_file_faker.app.monitor") as mock_monitor:
                     run()
 
-            # Verify monitor was called
-            mock_monitor.assert_called_once_with(test_dir, False)
+            # Verify monitor was called with profile
+            mock_monitor.assert_called_once()
+            call_args = mock_monitor.call_args
+            assert call_args[0][0] == test_dir  # First positional arg is directory
+            assert call_args.kwargs["dryrun"] is False
+            assert "profile" in call_args.kwargs  # Profile should be passed
 
     def test_directory_edit_multiple_files(self, tmp_path):
         """Test editing multiple FIT files in a directory."""
@@ -713,3 +1110,109 @@ class TestCLIIntegration:
             called_files = {call[0][0] for call in mock_edit.call_args_list}
             assert file1 in called_files
             assert file2 in called_files
+
+    def test_list_profiles_with_profiles_configured(self, caplog):
+        """Test --list-profiles when profiles exist."""
+        from fit_file_faker.app import run
+
+        mock_profile1 = MagicMock()
+        mock_profile1.name = "profile1"
+        mock_profile2 = MagicMock()
+        mock_profile2.name = "profile2"
+
+        with (
+            patch("fit_file_faker.app.config_manager") as mock_config,
+            patch("fit_file_faker.app.profile_manager") as mock_profile_mgr,
+        ):
+            mock_config.config.profiles = [mock_profile1, mock_profile2]
+
+            with patch("sys.argv", ["fit-file-faker", "--list-profiles"]):
+                with pytest.raises(SystemExit) as exc_info:
+                    with caplog.at_level(logging.INFO):
+                        run()
+
+            # Should exit with code 0
+            assert exc_info.value.code == 0
+
+            # Should call display_profiles_table
+            mock_profile_mgr.display_profiles_table.assert_called_once()
+
+    def test_list_profiles_with_no_profiles_configured(self, caplog):
+        """Test --list-profiles when no profiles are configured."""
+        from fit_file_faker.app import run
+
+        with (
+            patch("fit_file_faker.app.config_manager") as mock_config,
+            patch("fit_file_faker.app.profile_manager") as mock_profile_mgr,
+        ):
+            mock_config.config.profiles = []
+
+            with patch("sys.argv", ["fit-file-faker", "--list-profiles"]):
+                with pytest.raises(SystemExit) as exc_info:
+                    with caplog.at_level(logging.INFO):
+                        run()
+
+            # Should exit with code 0
+            assert exc_info.value.code == 0
+
+            # Should NOT call display_profiles_table when no profiles
+            mock_profile_mgr.display_profiles_table.assert_not_called()
+
+            # Should log the message about creating a profile
+            assert any(
+                "No profiles configured" in record.message
+                and "--config-menu" in record.message
+                for record in caplog.records
+            )
+
+    def test_config_menu_flag(self, caplog):
+        """Test --config-menu flag launches interactive menu."""
+        from fit_file_faker.app import run
+
+        with patch("fit_file_faker.app.profile_manager") as mock_profile_mgr:
+            with patch("sys.argv", ["fit-file-faker", "--config-menu"]):
+                with pytest.raises(SystemExit) as exc_info:
+                    with caplog.at_level(logging.INFO):
+                        run()
+
+            # Should exit with code 0
+            assert exc_info.value.code == 0
+
+            # Should call interactive_menu
+            mock_profile_mgr.interactive_menu.assert_called_once()
+
+    def test_initial_setup_flag_alias(self, caplog):
+        """Test that -s/--initial-setup is an alias for --config-menu."""
+        from fit_file_faker.app import run
+
+        with patch("fit_file_faker.app.profile_manager") as mock_profile_mgr:
+            with patch("sys.argv", ["fit-file-faker", "--initial-setup"]):
+                with pytest.raises(SystemExit) as exc_info:
+                    with caplog.at_level(logging.INFO):
+                        run()
+
+            # Should exit with code 0
+            assert exc_info.value.code == 0
+
+            # Should call interactive_menu
+            mock_profile_mgr.interactive_menu.assert_called_once()
+
+    def test_select_profile_error_handling(self, caplog):
+        """Test that select_profile errors are caught and logged."""
+        from fit_file_faker.app import run
+
+        with patch("fit_file_faker.app.select_profile") as mock_select:
+            mock_select.side_effect = ValueError("Test error message")
+
+            with patch("sys.argv", ["fit-file-faker", "-d", "/some/path"]):
+                with pytest.raises(SystemExit) as exc_info:
+                    with caplog.at_level(logging.ERROR):
+                        run()
+
+            # Should exit with code 1 (error)
+            assert exc_info.value.code == 1
+
+            # Should log the error message
+            assert any(
+                "Test error message" in record.message for record in caplog.records
+            )

@@ -38,7 +38,16 @@ class AppDetector(ABC):
         Returns:
             The display name of the application (e.g., "Zwift", "TrainingPeaks Virtual").
         """
-        pass
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def get_short_name(self) -> str:
+        """Get short app name for compact display (tables, lists).
+
+        Returns:
+            A short name suitable for table columns (e.g., "TPVirtual", "Zwift").
+        """
+        pass  # pragma: no cover
 
     @abstractmethod
     def get_default_path(self) -> Path | None:
@@ -51,7 +60,7 @@ class AppDetector(ABC):
         Returns:
             Path to FIT files directory if found, None otherwise.
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     def validate_path(self, path: Path) -> bool:
@@ -66,7 +75,7 @@ class AppDetector(ABC):
         Returns:
             True if path exists and appears valid for this app, False otherwise.
         """
-        pass
+        pass  # pragma: no cover
 
 
 class TPVDetector(AppDetector):
@@ -75,6 +84,10 @@ class TPVDetector(AppDetector):
     def get_display_name(self) -> str:
         """Get human-readable app name."""
         return "TrainingPeaks Virtual"
+
+    def get_short_name(self) -> str:
+        """Get short app name for compact display."""
+        return "TPVirtual"
 
     def get_default_path(self) -> Path | None:
         """Detect TrainingPeaks Virtual FIT files directory.
@@ -114,6 +127,10 @@ class ZwiftDetector(AppDetector):
 
     def get_display_name(self) -> str:
         """Get human-readable app name."""
+        return "Zwift"
+
+    def get_short_name(self) -> str:
+        """Get short app name for compact display."""
         return "Zwift"
 
     def get_default_path(self) -> Path | None:
@@ -183,6 +200,10 @@ class MyWhooshDetector(AppDetector):
 
     def get_display_name(self) -> str:
         """Get human-readable app name."""
+        return "MyWhoosh"
+
+    def get_short_name(self) -> str:
+        """Get short app name for compact display."""
         return "MyWhoosh"
 
     def get_default_path(self) -> Path | None:
@@ -255,6 +276,10 @@ class CustomDetector(AppDetector):
     def get_display_name(self) -> str:
         """Get human-readable app name."""
         return "Custom (Manual Path)"
+
+    def get_short_name(self) -> str:
+        """Get short app name for compact display."""
+        return "Custom"
 
     def get_default_path(self) -> Path | None:
         """No default for custom paths.
