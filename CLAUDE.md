@@ -35,8 +35,11 @@ pip install -e .
 # Show help
 fit-file-faker -h
 
-# Initial configuration (interactive)
-fit-file-faker -s
+# Interactive profile management menu
+fit-file-faker --config-menu
+
+# Show directories used for configuration and cache
+fit-file-faker --show-dirs
 
 # Edit a single FIT file
 fit-file-faker path/to/file.fit

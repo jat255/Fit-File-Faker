@@ -792,24 +792,10 @@ class TestCLIIntegration:
             assert logging.getLogger(logger_name).level == expected_third_party_level
 
     def test_cli_argument_validation(self, caplog):
-        """Test CLI argument validation - setup flag, no args, and conflicting args."""
+        """Test CLI argument validation - no args and conflicting args."""
         from fit_file_faker.app import run
 
-        # Test -s/--initial-setup flag (now calls profile_manager.interactive_menu)
-        with patch("fit_file_faker.app.profile_manager") as mock_profile_mgr:
-            with patch("sys.argv", ["fit-file-faker", "-s"]):
-                with pytest.raises(SystemExit) as exc_info:
-                    with caplog.at_level(logging.INFO):
-                        run()
-
-            mock_profile_mgr.interactive_menu.assert_called_once()
-            assert exc_info.value.code == 0
-            assert any(
-                "Launching profile management menu" in r.message for r in caplog.records
-            )
-
         # Test no arguments shows error
-        caplog.clear()
         with (
             patch("fit_file_faker.app.config_manager") as mock_config,
             patch("fit_file_faker.app.profile_manager") as mock_profile_manager,
@@ -1158,22 +1144,6 @@ class TestCLIIntegration:
             # Should call interactive_menu
             mock_profile_mgr.interactive_menu.assert_called_once()
 
-    def test_initial_setup_flag_alias(self, caplog):
-        """Test that -s/--initial-setup is an alias for --config-menu."""
-        from fit_file_faker.app import run
-
-        with patch("fit_file_faker.app.profile_manager") as mock_profile_mgr:
-            with patch("sys.argv", ["fit-file-faker", "--initial-setup"]):
-                with pytest.raises(SystemExit) as exc_info:
-                    with caplog.at_level(logging.INFO):
-                        run()
-
-            # Should exit with code 0
-            assert exc_info.value.code == 0
-
-            # Should call interactive_menu
-            mock_profile_mgr.interactive_menu.assert_called_once()
-
     def test_select_profile_error_handling(self, caplog):
         """Test that select_profile errors are caught and logged."""
         from fit_file_faker.app import run
@@ -1193,3 +1163,80 @@ class TestCLIIntegration:
             assert any(
                 "Test error message" in record.message for record in caplog.records
             )
+
+    def test_show_dirs_flag_with_garth_dirs(self, capsys):
+        """Test --show-dirs flag when garth directories exist."""
+        import re
+        from fit_file_faker.app import run
+        from fit_file_faker.config import dirs
+
+        # Create actual garth directories in the cache path
+        # (isolate_config_dirs fixture ensures this is a tmp directory)
+        garth_dir1 = dirs.user_cache_path / ".garth_profile1"
+        garth_dir2 = dirs.user_cache_path / ".garth_profile2"
+        garth_dir1.mkdir(parents=True, exist_ok=True)
+        garth_dir2.mkdir(parents=True, exist_ok=True)
+
+        with patch("sys.argv", ["fit-file-faker", "--show-dirs"]):
+            with pytest.raises(SystemExit) as exc_info:
+                run()
+
+        # Should exit with code 0
+        assert exc_info.value.code == 0
+
+        # Capture printed output
+        captured = capsys.readouterr()
+
+        # Remove all whitespace for easier assertion (Rich console wraps long paths)
+        output_normalized = re.sub(r"\s+", "", captured.out)
+        config_path_normalized = re.sub(r"\s+", "", str(dirs.user_config_path))
+        cache_path_normalized = re.sub(r"\s+", "", str(dirs.user_cache_path))
+
+        # Verify that the output contains the expected sections
+        assert "Executable:" in captured.out
+        assert "fit-file-faker command:" in captured.out
+        assert "Config directory:" in captured.out
+        assert config_path_normalized in output_normalized
+        assert "Cache directory:" in captured.out
+        assert cache_path_normalized in output_normalized
+
+        # Should show that garth directories were found
+        assert "Garmin credential directories:" in captured.out
+        assert ".garth_profile1" in captured.out
+        assert ".garth_profile2" in captured.out
+
+    def test_show_dirs_flag_without_garth_dirs(self, capsys):
+        """Test --show-dirs flag when no garth directories exist."""
+        import re
+        from fit_file_faker.app import run
+        from fit_file_faker.config import dirs
+
+        # Don't create any garth directories
+        # (isolate_config_dirs fixture ensures cache directory is empty)
+
+        with patch("sys.argv", ["fit-file-faker", "--show-dirs"]):
+            with pytest.raises(SystemExit) as exc_info:
+                run()
+
+        # Should exit with code 0
+        assert exc_info.value.code == 0
+
+        # Capture printed output
+        captured = capsys.readouterr()
+
+        # Remove all whitespace for easier assertion (Rich console wraps long paths)
+        output_normalized = re.sub(r"\s+", "", captured.out)
+        config_path_normalized = re.sub(r"\s+", "", str(dirs.user_config_path))
+        cache_path_normalized = re.sub(r"\s+", "", str(dirs.user_cache_path))
+
+        # Verify that the output contains the expected sections
+        assert "Executable:" in captured.out
+        assert "fit-file-faker command:" in captured.out
+        assert "Config directory:" in captured.out
+        assert config_path_normalized in output_normalized
+        assert "Cache directory:" in captured.out
+        assert cache_path_normalized in output_normalized
+
+        # Should show message about no garth directories found
+        assert "No Garmin credential directories found" in captured.out
+        assert "will be created on first use" in captured.out

@@ -49,8 +49,8 @@ pip install fit-file-faker
 
 ### Configure
 ```bash
-# Interactive setup
-fit-file-faker -s
+# Interactive profile management menu
+fit-file-faker --config-menu
 ```
 
 ### Edit & Upload
@@ -77,6 +77,9 @@ fit-file-faker --config-menu
 
 # List all profiles
 fit-file-faker --list-profiles
+
+# Show directories used for configuration and cache
+fit-file-faker --show-dirs
 
 # Use a specific profile
 fit-file-faker --profile my-profile -ua

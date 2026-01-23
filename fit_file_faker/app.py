@@ -527,7 +527,10 @@ def run():
 
     Command-line options:
 
-        -s, --initial-setup: Interactive configuration setup
+        --profile: Specify which profile to use
+        --list-profiles: List all available profiles
+        --config-menu: Launch the interactive profile management menu
+        --show-dirs: Show directories used for configuration and cache
         -u, --upload: Upload file after editing
         -ua, --upload-all: Batch upload all new files
         -p, --preinitialize: Mark all existing files as already uploaded
@@ -542,7 +545,8 @@ def run():
     Examples:
 
         # run() is called automatically when running the installed command:
-        $ fit-file-faker -s
+        $ fit-file-faker --config-menu
+        $ fit-file-faker --show-dirs
         $ fit-file-faker -u activity.fit
         $ fit-file-faker -ua
         $ fit-file-faker -m
@@ -561,8 +565,9 @@ def run():
 
     parser = argparse.ArgumentParser(
         description="Tool to add Garmin device information to FIT files and upload them to Garmin Connect. "
-        "Currently, only FIT files produced by TrainingPeaks Virtual (https://www.trainingpeaks.com/virtual/) "
-        "and Zwift (https://www.zwift.com/) are supported, but it's possible others may work."
+        "Currently, only FIT files produced by TrainingPeaks Virtual (https://www.trainingpeaks.com/virtual/), "
+        "Zwift (https://www.zwift.com/), and MyWhoosh (https://mywhoosh.com/) are supported, but it's "
+        "possible others may work."
     )
     parser.add_argument(
         "input_path",
@@ -571,12 +576,6 @@ def run():
         help="the FIT file or directory to process. This argument can be omitted if the 'fitfiles_path' "
         "config value is set (that directory will be used instead). By default, files will just be edited. "
         'Specify the "-u" flag to also upload them to Garmin Connect.',
-    )
-    parser.add_argument(
-        "-s",
-        "--initial-setup",
-        help="Launch the interactive profile management menu (alias for --config-menu)",
-        action="store_true",
     )
     parser.add_argument(
         "--profile",
@@ -592,6 +591,11 @@ def run():
     parser.add_argument(
         "--config-menu",
         help="launch the interactive profile management menu",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--show-dirs",
+        help="show the directories used by Fit File Faker for configuration and cache",
         action="store_true",
     )
     parser.add_argument(
@@ -652,12 +656,6 @@ def run():
         ]:
             logging.getLogger(logger).setLevel(logging.WARNING)
 
-    # Handle --initial-setup (now an alias for --config-menu)
-    if args.initial_setup:
-        _logger.info("Launching profile management menu...")
-        profile_manager.interactive_menu()
-        sys.exit(0)
-
     # Handle --list-profiles
     if args.list_profiles:
         if not config_manager.config.profiles:
@@ -672,6 +670,47 @@ def run():
     if args.config_menu:
         profile_manager.interactive_menu()
         sys.exit(0)
+
+    # Handle --show-dirs
+    if args.show_dirs:
+        from fit_file_faker.config import dirs as config_dirs
+
+        console = Console()
+        console.print("\n[bold cyan]Fit File Faker - Directories[/bold cyan]\n")
+
+        # Show executable path
+        console.print(f'[green]Executable:[/green] [yellow]"{sys.executable}"[/yellow]')
+        console.print(
+            f'  [dim]fit-file-faker command:[/dim] [yellow]"{sys.argv[0]}"[/yellow]'
+        )
+
+        # Show config directory
+        console.print(
+            f'\n[green]Config directory:[/green] [yellow]"{config_dirs.user_config_path}"[/yellow]'
+        )
+        console.print(
+            f'  [dim]Configuration file:[/dim] [yellow]"{config_manager.get_config_file_path()}"[/yellow]'
+        )
+
+        # Show cache directory
+        console.print(
+            f'\n[green]Cache directory:[/green] [yellow]"{config_dirs.user_cache_path}"[/yellow]'
+        )
+
+        # Find and list actual .garth directories
+        garth_dirs = sorted(config_dirs.user_cache_path.glob(".garth_*"))
+        if garth_dirs:
+            console.print("  [dim]Garmin credential directories:[/dim]")
+            for garth_dir in garth_dirs:
+                console.print(f'    [yellow]"{garth_dir}"[/yellow]')
+        else:
+            console.print(
+                "  [dim]No Garmin credential directories found (will be created on first use)[/dim]"
+            )
+
+        console.print()
+        sys.exit(0)
+
     if not args.input_path and not (
         args.upload_all or args.monitor or args.preinitialize
     ):

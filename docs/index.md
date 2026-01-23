@@ -233,16 +233,6 @@ If you select **Yes**, you can:
 !!! note "Backward Compatibility"
     Existing profiles without device settings automatically default to Edge 830, maintaining the original behavior.
 
-### Initial Setup (Legacy)
-
-The `-s` flag still works for backward compatibility but now launches the profile manager:
-
-```bash
-fit-file-faker -s
-```
-
-For new users, it's recommended to use `--config-menu` for the full multi-profile experience.
-
 ## Usage
 
 ### Command-line Options
@@ -254,7 +244,7 @@ fit-file-faker -h
 ```
 
 ```
-usage: fit-file-faker [-h] [-s] [--profile PROFILE] [--list-profiles] [--config-menu] [-u] [-ua] [-p] [-m] [-d] [-v] [input_path]
+usage: fit-file-faker [-h] [--profile PROFILE] [--list-profiles] [--config-menu] [--show-dirs] [-u] [-ua] [-p] [-m] [-d] [-v] [input_path]
 
 Tool to add Garmin device information to FIT files and upload them to Garmin Connect. Currently, only FIT files produced by TrainingPeaks Virtual (https://www.trainingpeaks.com/virtual/) and Zwift
 (https://www.zwift.com/) are supported, but it's possible others may work.
@@ -265,10 +255,10 @@ positional arguments:
 
 options:
   -h, --help           show this help message and exit
-  -s, --initial-setup  Launch the interactive profile management menu (alias for --config-menu)
   --profile PROFILE    specify which profile to use (if not specified, uses default profile)
   --list-profiles      list all available profiles and exit
   --config-menu        launch the interactive profile management menu
+  --show-dirs          show the directories used by Fit File Faker for configuration and cache
   -u, --upload         upload FIT file (after editing) to Garmin Connect
   -ua, --upload-all    upload all FIT files in directory (if they are not in "already processed" list)
   -p, --preinitialize  preinitialize the list of processed FIT files (mark all existing files in directory as already uploaded)
@@ -305,6 +295,9 @@ fit-file-faker --list-profiles
 
 # Launch interactive profile manager
 fit-file-faker --config-menu
+
+# Show directories used by FIT File Faker
+fit-file-faker --show-dirs
 ```
 
 #### Profile Selection Priority
@@ -412,6 +405,16 @@ $ fit-file-faker --monitor /home/user/Documents/TPVirtual/0123456789ABCEDF/FITFi
 ## Troubleshooting
 
 If you run into problems, please [create an issue](https://github.com/jat255/Fit-File-Faker/issues/new/choose) on the GitHub repo.
+
+!!! tip "Viewing Configuration Directories"
+    Use `fit-file-faker --show-dirs` to see:
+
+    - Configuration file location
+    - Cache directory location
+    - Garmin credential directories for each profile
+    - Executable paths
+
+    This can be helpful when troubleshooting configuration or credential issues.
 
 !!! note
     As this is a side-project provided for free (as in speech and beer), support times may vary 😅.
