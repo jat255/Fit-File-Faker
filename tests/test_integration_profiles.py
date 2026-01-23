@@ -135,7 +135,7 @@ class TestMultiProfileWorkflows:
         assert default_profile.name == "default"
         assert default_profile.garmin_username == "legacy@example.com"
         assert default_profile.garmin_password == "legacy_pass"
-        assert str(default_profile.fitfiles_path) == "/legacy/path"
+        assert default_profile.fitfiles_path.as_posix() == "/legacy/path"
         assert default_profile.app_type == AppType.TP_VIRTUAL
 
         # Verify config is now in new format

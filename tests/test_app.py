@@ -332,27 +332,6 @@ class TestNewFileEventHandler:
         # Should call upload_all with the parent directory and profile
         mock_upload_all.assert_called_once_with(temp_dir, profile=mock_profile)
 
-    @patch("fit_file_faker.app.upload_all")
-    @patch("fit_file_faker.app.time.sleep")
-    def test_on_created_dryrun(self, mock_sleep, mock_upload_all, temp_dir):
-        """Test that dryrun doesn't process files."""
-        mock_profile = MagicMock()
-        handler = NewFileEventHandler(profile=mock_profile, dryrun=True)
-
-        from watchdog.events import FileCreatedEvent
-
-        test_file = temp_dir / "new_activity.fit"
-        test_file.touch()
-
-        event = FileCreatedEvent(str(test_file))
-
-        # Trigger event
-        handler.on_created(event)
-
-        # Should NOT sleep or upload
-        mock_sleep.assert_not_called()
-        mock_upload_all.assert_not_called()
-
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
     @patch("fit_file_faker.app.time.sleep")
@@ -423,31 +402,49 @@ class TestNewFileEventHandler:
         mock_fit_editor.edit_fit.assert_not_called()
         mock_upload.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "event_type,file_name",
+        [
+            ("created", "new_activity.fit"),
+            ("modified", "MyNewActivity-12345.fit"),
+        ],
+    )
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.upload_all")
     @patch("fit_file_faker.app.time.sleep")
-    def test_on_modified_dryrun(
-        self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
+    def test_dryrun_mode(
+        self,
+        mock_sleep,
+        mock_upload_all,
+        mock_upload,
+        mock_fit_editor,
+        temp_dir,
+        event_type,
+        file_name,
     ):
-        """Test that dryrun doesn't process files."""
+        """Test that dryrun mode doesn't process files for both created and modified events."""
+        from watchdog.events import FileCreatedEvent, FileModifiedEvent
+
         mock_profile = MagicMock()
         handler = NewFileEventHandler(profile=mock_profile, dryrun=True)
 
-        # Create a mock MyWhoosh file
-        from watchdog.events import FileModifiedEvent
-
-        test_file = temp_dir / "MyNewActivity-12345.fit"
+        test_file = temp_dir / file_name
         test_file.touch()
 
-        event = FileModifiedEvent(str(test_file))
-
-        # Trigger event
-        handler.on_modified(event)
+        # Create appropriate event type
+        if event_type == "created":
+            event = FileCreatedEvent(str(test_file))
+            handler.on_created(event)
+        else:
+            event = FileModifiedEvent(str(test_file))
+            handler.on_modified(event)
 
         # Should NOT sleep or process in dryrun mode
         mock_sleep.assert_not_called()
         mock_fit_editor.edit_fit.assert_not_called()
         mock_upload.assert_not_called()
+        mock_upload_all.assert_not_called()
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -748,8 +745,17 @@ class TestCLIIntegration:
         assert 'current version is "3.11.0"' in error_message
         assert "Please upgrade your python version" in error_message
 
-    def test_verbose_mode_logging_levels(self, tmp_path):
-        """Test that verbose mode sets main logger to DEBUG and third-party loggers to INFO."""
+    @pytest.mark.parametrize(
+        "verbose,expected_main_level,expected_third_party_level",
+        [
+            (True, logging.DEBUG, logging.INFO),
+            (False, logging.INFO, logging.WARNING),
+        ],
+    )
+    def test_logging_levels(
+        self, tmp_path, verbose, expected_main_level, expected_third_party_level
+    ):
+        """Test that verbose mode affects main and third-party logger levels appropriately."""
         from fit_file_faker.app import run, _logger
 
         test_file = tmp_path / "test.fit"
@@ -759,7 +765,11 @@ class TestCLIIntegration:
             mock_config.is_valid.return_value = True
             mock_config.config.fitfiles_path = None
 
-            with patch("sys.argv", ["fit-file-faker", "-v", "-d", str(test_file)]):
+            args = ["fit-file-faker", "-d", str(test_file)]
+            if verbose:
+                args.insert(1, "-v")
+
+            with patch("sys.argv", args):
                 with patch("fit_file_faker.app.fit_editor.edit_fit") as mock_edit:
                     mock_edit.return_value = None
                     try:
@@ -767,10 +777,10 @@ class TestCLIIntegration:
                     except SystemExit:
                         pass
 
-        # Main logger should be DEBUG
-        assert _logger.level == logging.DEBUG
+        # Check main logger level
+        assert _logger.level == expected_main_level
 
-        # Third-party loggers should be INFO
+        # Check third-party loggers
         third_party_loggers = [
             "urllib3.connectionpool",
             "oauthlib.oauth1.rfc5849",
@@ -779,40 +789,7 @@ class TestCLIIntegration:
             "watchdog.observers.inotify_buffer",
         ]
         for logger_name in third_party_loggers:
-            assert logging.getLogger(logger_name).level == logging.INFO
-
-    def test_non_verbose_mode_logging_levels(self, tmp_path):
-        """Test that non-verbose mode sets main logger to INFO and third-party loggers to WARNING."""
-        from fit_file_faker.app import run, _logger
-
-        test_file = tmp_path / "test.fit"
-        test_file.write_bytes(b"test content")
-
-        with patch("fit_file_faker.app.config_manager") as mock_config:
-            mock_config.is_valid.return_value = True
-            mock_config.config.fitfiles_path = None
-
-            with patch("sys.argv", ["fit-file-faker", "-d", str(test_file)]):
-                with patch("fit_file_faker.app.fit_editor.edit_fit") as mock_edit:
-                    mock_edit.return_value = None
-                    try:
-                        run()
-                    except SystemExit:
-                        pass
-
-        # Main logger should be INFO
-        assert _logger.level == logging.INFO
-
-        # Third-party loggers should be WARNING
-        third_party_loggers = [
-            "urllib3.connectionpool",
-            "oauthlib.oauth1.rfc5849",
-            "requests_oauthlib.oauth1_auth",
-            "asyncio",
-            "watchdog.observers.inotify_buffer",
-        ]
-        for logger_name in third_party_loggers:
-            assert logging.getLogger(logger_name).level == logging.WARNING
+            assert logging.getLogger(logger_name).level == expected_third_party_level
 
     def test_cli_argument_validation(self, caplog):
         """Test CLI argument validation - setup flag, no args, and conflicting args."""

@@ -175,7 +175,7 @@ class TestConfigManager:
             data = json.load(f)
         assert data["profiles"][0]["garmin_username"] == "test@example.com"
         assert data["profiles"][0]["garmin_password"] == "password"
-        assert data["profiles"][0]["fitfiles_path"] == "/test/path"
+        assert Path(data["profiles"][0]["fitfiles_path"]).as_posix() == "/test/path"
         assert data["default_profile"] == "test"
 
         # Test with Path object - should serialize to string
@@ -1649,7 +1649,11 @@ class TestProfileManagerWizards:
         # Check that the path is truncated with "..."
         assert "..." in output
         # Check that part of the truncated path is present (table may further truncate)
-        assert "rty/characters/for/testing" in output
+        # Use platform-agnostic path separator check
+        assert (
+            "rty/characters/for/testing" in output
+            or "rty\\characters\\for\\testing" in output
+        )
 
     def test_delete_profile_wizard_handles_error(
         self, manager_with_profiles, monkeypatch, capsys

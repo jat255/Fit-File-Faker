@@ -4,6 +4,7 @@ Tests for app registry and detector classes.
 
 from pathlib import Path
 
+import pytest
 
 from fit_file_faker.app_registry import (
     APP_REGISTRY,
@@ -16,30 +17,60 @@ from fit_file_faker.app_registry import (
 from fit_file_faker.config import AppType
 
 
-class TestTPVDetector:
-    """Tests for TrainingPeaks Virtual detector."""
+class TestDetectorNames:
+    """Tests for detector display and short names."""
 
-    def test_display_name(self):
-        """Test that TPV detector returns correct display name."""
-        detector = TPVDetector()
-        assert detector.get_display_name() == "TrainingPeaks Virtual"
+    @pytest.mark.parametrize(
+        "detector_class,expected_display_name",
+        [
+            (TPVDetector, "TrainingPeaks Virtual"),
+            (ZwiftDetector, "Zwift"),
+            (MyWhooshDetector, "MyWhoosh"),
+            (CustomDetector, "Custom (Manual Path)"),
+        ],
+    )
+    def test_display_names(self, detector_class, expected_display_name):
+        """Test that detectors return correct display names."""
+        detector = detector_class()
+        assert detector.get_display_name() == expected_display_name
 
-    def test_short_name(self):
-        """Test that TPV detector returns correct short name."""
-        detector = TPVDetector()
-        assert detector.get_short_name() == "TPVirtual"
+    @pytest.mark.parametrize(
+        "detector_class,expected_short_name",
+        [
+            (TPVDetector, "TPVirtual"),
+            (ZwiftDetector, "Zwift"),
+            (MyWhooshDetector, "MyWhoosh"),
+            (CustomDetector, "Custom"),
+        ],
+    )
+    def test_short_names(self, detector_class, expected_short_name):
+        """Test that detectors return correct short names."""
+        detector = detector_class()
+        assert detector.get_short_name() == expected_short_name
 
-    def test_validate_path_exists(self, tmp_path):
+
+class TestDetectorValidation:
+    """Tests for detector path validation."""
+
+    @pytest.mark.parametrize(
+        "detector_class",
+        [TPVDetector, ZwiftDetector, MyWhooshDetector, CustomDetector],
+    )
+    def test_validate_path_exists(self, detector_class, tmp_path):
         """Test that validation succeeds for existing directory."""
-        detector = TPVDetector()
-        test_dir = tmp_path / "tpv_fitfiles"
+        detector = detector_class()
+        test_dir = tmp_path / "test_fitfiles"
         test_dir.mkdir()
 
         assert detector.validate_path(test_dir) is True
 
-    def test_validate_path_not_exists(self):
+    @pytest.mark.parametrize(
+        "detector_class",
+        [TPVDetector, ZwiftDetector, MyWhooshDetector, CustomDetector],
+    )
+    def test_validate_path_not_exists(self, detector_class):
         """Test that validation fails for non-existent path."""
-        detector = TPVDetector()
+        detector = detector_class()
         assert detector.validate_path(Path("/nonexistent/path")) is False
 
     def test_validate_path_is_file(self, tmp_path):
@@ -52,30 +83,7 @@ class TestTPVDetector:
 
 
 class TestZwiftDetector:
-    """Tests for Zwift detector."""
-
-    def test_display_name(self):
-        """Test that Zwift detector returns correct display name."""
-        detector = ZwiftDetector()
-        assert detector.get_display_name() == "Zwift"
-
-    def test_short_name(self):
-        """Test that Zwift detector returns correct short name."""
-        detector = ZwiftDetector()
-        assert detector.get_short_name() == "Zwift"
-
-    def test_validate_path_exists(self, tmp_path):
-        """Test that validation succeeds for existing directory."""
-        detector = ZwiftDetector()
-        test_dir = tmp_path / "zwift_activities"
-        test_dir.mkdir()
-
-        assert detector.validate_path(test_dir) is True
-
-    def test_validate_path_not_exists(self):
-        """Test that validation fails for non-existent path."""
-        detector = ZwiftDetector()
-        assert detector.validate_path(Path("/nonexistent/path")) is False
+    """Tests for Zwift detector platform-specific paths."""
 
     def test_get_default_path_macos(self, monkeypatch, tmp_path):
         """Test Zwift default path detection on macOS."""
@@ -135,42 +143,9 @@ class TestZwiftDetector:
 
         assert result == zwift_dir
 
-    def test_get_default_path_not_found(self, monkeypatch, tmp_path):
-        """Test that None is returned when Zwift directory doesn't exist."""
-        monkeypatch.setattr("sys.platform", "darwin")
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-
-        detector = ZwiftDetector()
-        result = detector.get_default_path()
-
-        assert result is None
-
 
 class TestMyWhooshDetector:
-    """Tests for MyWhoosh detector."""
-
-    def test_display_name(self):
-        """Test that MyWhoosh detector returns correct display name."""
-        detector = MyWhooshDetector()
-        assert detector.get_display_name() == "MyWhoosh"
-
-    def test_short_name(self):
-        """Test that MyWhoosh detector returns correct short name."""
-        detector = MyWhooshDetector()
-        assert detector.get_short_name() == "MyWhoosh"
-
-    def test_validate_path_exists(self, tmp_path):
-        """Test that validation succeeds for existing directory."""
-        detector = MyWhooshDetector()
-        test_dir = tmp_path / "mywhoosh_data"
-        test_dir.mkdir()
-
-        assert detector.validate_path(test_dir) is True
-
-    def test_validate_path_not_exists(self):
-        """Test that validation fails for non-existent path."""
-        detector = MyWhooshDetector()
-        assert detector.validate_path(Path("/nonexistent/path")) is False
+    """Tests for MyWhoosh detector platform-specific paths."""
 
     def test_get_default_path_macos(self, monkeypatch, tmp_path):
         """Test MyWhoosh default path detection on macOS."""
@@ -231,47 +206,32 @@ class TestMyWhooshDetector:
 
         assert result is None
 
-    def test_get_default_path_not_found(self, monkeypatch, tmp_path):
-        """Test that None is returned when MyWhoosh directory doesn't exist."""
-        monkeypatch.setattr("sys.platform", "darwin")
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-
-        detector = MyWhooshDetector()
-        result = detector.get_default_path()
-
-        assert result is None
-
 
 class TestCustomDetector:
     """Tests for Custom detector."""
-
-    def test_display_name(self):
-        """Test that Custom detector returns correct display name."""
-        detector = CustomDetector()
-        assert detector.get_display_name() == "Custom (Manual Path)"
-
-    def test_short_name(self):
-        """Test that Custom detector returns correct short name."""
-        detector = CustomDetector()
-        assert detector.get_short_name() == "Custom"
 
     def test_get_default_path_returns_none(self):
         """Test that Custom detector always returns None for default path."""
         detector = CustomDetector()
         assert detector.get_default_path() is None
 
-    def test_validate_path_exists(self, tmp_path):
-        """Test that validation succeeds for existing directory."""
-        detector = CustomDetector()
-        test_dir = tmp_path / "custom_fitfiles"
-        test_dir.mkdir()
 
-        assert detector.validate_path(test_dir) is True
+class TestGetDefaultPathNotFound:
+    """Tests for detectors returning None when default path not found."""
 
-    def test_validate_path_not_exists(self):
-        """Test that validation fails for non-existent path."""
-        detector = CustomDetector()
-        assert detector.validate_path(Path("/nonexistent/path")) is False
+    @pytest.mark.parametrize(
+        "detector_class",
+        [ZwiftDetector, MyWhooshDetector],
+    )
+    def test_get_default_path_not_found(self, detector_class, monkeypatch, tmp_path):
+        """Test that None is returned when detector's directory doesn't exist."""
+        monkeypatch.setattr("sys.platform", "darwin")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        detector = detector_class()
+        result = detector.get_default_path()
+
+        assert result is None
 
 
 class TestAppRegistry:

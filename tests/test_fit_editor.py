@@ -50,83 +50,29 @@ class TestFitEditor:
     """Tests for the FitEditor class."""
 
     @pytest.mark.slow
-    def test_edit_tpv_0_4_7_fit_file(self, fit_editor, tpv_fit_0_4_7_parsed, temp_dir):
-        """Test editing a TrainingPeaks Virtual FIT file."""
-        output_file = temp_dir / "tpv_0_4_7_modified.fit"
-
-        # Edit the file using cached parsed FIT file
-        result = fit_editor.edit_fit(tpv_fit_0_4_7_parsed, output=output_file)
-
-        # Verify the file was created
-        assert result == output_file
-        assert output_file.exists()
-
-        # Verify modifications
-        verify_garmin_device_info(output_file)
-
-    @pytest.mark.slow
-    def test_edit_tpv_0_4_30_fit_file(
-        self, fit_editor, tpv_fit_0_4_30_parsed, temp_dir
+    @pytest.mark.parametrize(
+        "fit_file_fixture,output_name",
+        [
+            ("tpv_fit_0_4_7_parsed", "tpv_0_4_7_modified.fit"),
+            ("tpv_fit_0_4_30_parsed", "tpv_0_4_30_modified.fit"),
+            ("zwift_fit_parsed", "zwift_modified.fit"),
+            ("mywhoosh_fit_parsed", "mywhoosh_modified.fit"),
+            ("karoo_fit_parsed", "karoo_modified.fit"),
+            ("coros_fit_parsed", "coros_modified.fit"),
+        ],
+    )
+    def test_edit_fit_files(
+        self, fit_editor, fit_file_fixture, output_name, temp_dir, request
     ):
-        """Test editing a TrainingPeaks Virtual FIT file."""
-        output_file = temp_dir / "tpv_0_4_30_modified.fit"
+        """Test editing FIT files from various platforms (TPV, Zwift, MyWhoosh, Karoo, COROS)."""
+        # Get the fixture value using request.getfixturevalue
+        fit_file_parsed = request.getfixturevalue(fit_file_fixture)
+        output_file = temp_dir / output_name
 
         # Edit the file using cached parsed FIT file
-        result = fit_editor.edit_fit(tpv_fit_0_4_30_parsed, output=output_file)
+        result = fit_editor.edit_fit(fit_file_parsed, output=output_file)
 
         # Verify the file was created
-        assert result == output_file
-        assert output_file.exists()
-
-        # Verify modifications
-        verify_garmin_device_info(output_file)
-
-    @pytest.mark.slow
-    def test_edit_zwift_fit_file(self, fit_editor, zwift_fit_parsed, temp_dir):
-        """Test editing a Zwift FIT file."""
-        output_file = temp_dir / "zwift_modified.fit"
-
-        result = fit_editor.edit_fit(zwift_fit_parsed, output=output_file)
-
-        assert result == output_file
-        assert output_file.exists()
-
-        # Verify modifications
-        verify_garmin_device_info(output_file)
-
-    @pytest.mark.slow
-    def test_edit_mywhoosh_fit_file(self, fit_editor, mywhoosh_fit_parsed, temp_dir):
-        """Test editing a MyWhoosh FIT file."""
-        output_file = temp_dir / "mywhoosh_modified.fit"
-
-        result = fit_editor.edit_fit(mywhoosh_fit_parsed, output=output_file)
-
-        assert result == output_file
-        assert output_file.exists()
-
-        # Verify modifications
-        verify_garmin_device_info(output_file)
-
-    @pytest.mark.slow
-    def test_edit_karoo_fit_file(self, fit_editor, karoo_fit_parsed, temp_dir):
-        """Test editing a Hammerhead Karoo FIT file."""
-        output_file = temp_dir / "karoo_modified.fit"
-
-        result = fit_editor.edit_fit(karoo_fit_parsed, output=output_file)
-
-        assert result == output_file
-        assert output_file.exists()
-
-        # Verify modifications
-        verify_garmin_device_info(output_file)
-
-    @pytest.mark.slow
-    def test_edit_coros_fit_file(self, fit_editor, coros_fit_parsed, temp_dir):
-        """Test editing a COROS FIT file."""
-        output_file = temp_dir / "coros_modified.fit"
-
-        result = fit_editor.edit_fit(coros_fit_parsed, output=output_file)
-
         assert result == output_file
         assert output_file.exists()
 
