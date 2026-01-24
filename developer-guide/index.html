@@ -12,23 +12,26 @@
 </span></code></pre></div> <h3 id=common-development-commands>Common Development Commands<a class=headerlink href=#common-development-commands title="Permanent link">&para;</a></h3> <div class="language-bash highlight"><pre><span></span><code><span id=__span-4-1><a id=__codelineno-4-1 name=__codelineno-4-1 href=#__codelineno-4-1></a><span class=c1># Show help</span>
 </span><span id=__span-4-2><a id=__codelineno-4-2 name=__codelineno-4-2 href=#__codelineno-4-2></a>fit-file-faker<span class=w> </span>-h
 </span><span id=__span-4-3><a id=__codelineno-4-3 name=__codelineno-4-3 href=#__codelineno-4-3></a>
-</span><span id=__span-4-4><a id=__codelineno-4-4 name=__codelineno-4-4 href=#__codelineno-4-4></a><span class=c1># Initial configuration (interactive)</span>
-</span><span id=__span-4-5><a id=__codelineno-4-5 name=__codelineno-4-5 href=#__codelineno-4-5></a>fit-file-faker<span class=w> </span>-s
+</span><span id=__span-4-4><a id=__codelineno-4-4 name=__codelineno-4-4 href=#__codelineno-4-4></a><span class=c1># Interactive profile management menu</span>
+</span><span id=__span-4-5><a id=__codelineno-4-5 name=__codelineno-4-5 href=#__codelineno-4-5></a>fit-file-faker<span class=w> </span>--config-menu
 </span><span id=__span-4-6><a id=__codelineno-4-6 name=__codelineno-4-6 href=#__codelineno-4-6></a>
-</span><span id=__span-4-7><a id=__codelineno-4-7 name=__codelineno-4-7 href=#__codelineno-4-7></a><span class=c1># Edit a single FIT file</span>
-</span><span id=__span-4-8><a id=__codelineno-4-8 name=__codelineno-4-8 href=#__codelineno-4-8></a>fit-file-faker<span class=w> </span>path/to/file.fit
+</span><span id=__span-4-7><a id=__codelineno-4-7 name=__codelineno-4-7 href=#__codelineno-4-7></a><span class=c1># Show directories used for configuration and cache</span>
+</span><span id=__span-4-8><a id=__codelineno-4-8 name=__codelineno-4-8 href=#__codelineno-4-8></a>fit-file-faker<span class=w> </span>--show-dirs
 </span><span id=__span-4-9><a id=__codelineno-4-9 name=__codelineno-4-9 href=#__codelineno-4-9></a>
-</span><span id=__span-4-10><a id=__codelineno-4-10 name=__codelineno-4-10 href=#__codelineno-4-10></a><span class=c1># Edit and upload to Garmin Connect</span>
-</span><span id=__span-4-11><a id=__codelineno-4-11 name=__codelineno-4-11 href=#__codelineno-4-11></a>fit-file-faker<span class=w> </span>-u<span class=w> </span>path/to/file.fit
+</span><span id=__span-4-10><a id=__codelineno-4-10 name=__codelineno-4-10 href=#__codelineno-4-10></a><span class=c1># Edit a single FIT file</span>
+</span><span id=__span-4-11><a id=__codelineno-4-11 name=__codelineno-4-11 href=#__codelineno-4-11></a>fit-file-faker<span class=w> </span>path/to/file.fit
 </span><span id=__span-4-12><a id=__codelineno-4-12 name=__codelineno-4-12 href=#__codelineno-4-12></a>
-</span><span id=__span-4-13><a id=__codelineno-4-13 name=__codelineno-4-13 href=#__codelineno-4-13></a><span class=c1># Upload all new files in configured directory</span>
-</span><span id=__span-4-14><a id=__codelineno-4-14 name=__codelineno-4-14 href=#__codelineno-4-14></a>fit-file-faker<span class=w> </span>-ua
+</span><span id=__span-4-13><a id=__codelineno-4-13 name=__codelineno-4-13 href=#__codelineno-4-13></a><span class=c1># Edit and upload to Garmin Connect</span>
+</span><span id=__span-4-14><a id=__codelineno-4-14 name=__codelineno-4-14 href=#__codelineno-4-14></a>fit-file-faker<span class=w> </span>-u<span class=w> </span>path/to/file.fit
 </span><span id=__span-4-15><a id=__codelineno-4-15 name=__codelineno-4-15 href=#__codelineno-4-15></a>
-</span><span id=__span-4-16><a id=__codelineno-4-16 name=__codelineno-4-16 href=#__codelineno-4-16></a><span class=c1># Monitor directory for new files</span>
-</span><span id=__span-4-17><a id=__codelineno-4-17 name=__codelineno-4-17 href=#__codelineno-4-17></a>fit-file-faker<span class=w> </span>-m
+</span><span id=__span-4-16><a id=__codelineno-4-16 name=__codelineno-4-16 href=#__codelineno-4-16></a><span class=c1># Upload all new files in configured directory</span>
+</span><span id=__span-4-17><a id=__codelineno-4-17 name=__codelineno-4-17 href=#__codelineno-4-17></a>fit-file-faker<span class=w> </span>-ua
 </span><span id=__span-4-18><a id=__codelineno-4-18 name=__codelineno-4-18 href=#__codelineno-4-18></a>
-</span><span id=__span-4-19><a id=__codelineno-4-19 name=__codelineno-4-19 href=#__codelineno-4-19></a><span class=c1># Dry run (no changes or uploads)</span>
-</span><span id=__span-4-20><a id=__codelineno-4-20 name=__codelineno-4-20 href=#__codelineno-4-20></a>fit-file-faker<span class=w> </span>-d<span class=w> </span>path/to/file.fit
+</span><span id=__span-4-19><a id=__codelineno-4-19 name=__codelineno-4-19 href=#__codelineno-4-19></a><span class=c1># Monitor directory for new files</span>
+</span><span id=__span-4-20><a id=__codelineno-4-20 name=__codelineno-4-20 href=#__codelineno-4-20></a>fit-file-faker<span class=w> </span>-m
+</span><span id=__span-4-21><a id=__codelineno-4-21 name=__codelineno-4-21 href=#__codelineno-4-21></a>
+</span><span id=__span-4-22><a id=__codelineno-4-22 name=__codelineno-4-22 href=#__codelineno-4-22></a><span class=c1># Dry run (no changes or uploads)</span>
+</span><span id=__span-4-23><a id=__codelineno-4-23 name=__codelineno-4-23 href=#__codelineno-4-23></a>fit-file-faker<span class=w> </span>-d<span class=w> </span>path/to/file.fit
 </span></code></pre></div> <h3 id=linting>Linting<a class=headerlink href=#linting title="Permanent link">&para;</a></h3> <div class="language-bash highlight"><pre><span></span><code><span id=__span-5-1><a id=__codelineno-5-1 name=__codelineno-5-1 href=#__codelineno-5-1></a><span class=c1># Run ruff (configured in dev dependencies)</span>
 </span><span id=__span-5-2><a id=__codelineno-5-2 name=__codelineno-5-2 href=#__codelineno-5-2></a>ruff<span class=w> </span>check<span class=w> </span>.
 </span><span id=__span-5-3><a id=__codelineno-5-3 name=__codelineno-5-3 href=#__codelineno-5-3></a>ruff<span class=w> </span>format<span class=w> </span>.
