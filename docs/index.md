@@ -142,6 +142,11 @@ As of version 2.0.0, FIT File Faker now supports **multi-profile configuration**
     fit-file-faker --config-menu
     ```
 
+    <div align="center">
+      <img src="vhs_gifs/config_new.gif" alt="Creating a new profile" width="800" />
+      <p><em>Creating a new profile with the interactive menu</em></p>
+    </div>
+
     This supports:
 
     - **Multiple Garmin accounts** with isolated credentials
@@ -235,6 +240,11 @@ If you select **Yes**, you can:
 
 ## Usage
 
+<div align="center">
+  <img src="vhs_gifs/features.gif" alt="FIT File Faker Features Demo" width="800" />
+  <p><em>Overview of FIT File Faker features and commands</em></p>
+</div>
+
 ### Command-line Options
 
 To see all available options:
@@ -299,6 +309,11 @@ fit-file-faker --config-menu
 # Show directories used by FIT File Faker
 fit-file-faker --show-dirs
 ```
+
+<div align="center">
+  <img src="vhs_gifs/config_edit.gif" alt="Editing a profile" width="800" />
+  <p><em>Editing an existing profile configuration</em></p>
+</div>
 
 #### Profile Selection Priority
 
