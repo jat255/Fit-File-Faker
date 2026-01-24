@@ -5,10 +5,9 @@ validation, loading, and saving. Configuration is stored in a platform-specific
 user configuration directory using platformdirs.
 
 The configuration includes Garmin Connect credentials and the path to the
-directory containing FIT files to process. For TrainingPeaks Virtual users,
-the FIT files directory is auto-detected on macOS and Windows.
-
-
+directory containing FIT files to process. Depending on the trainer app
+selected in the profile, the FIT files directory is auto-detected (but can
+be overridden).
 
 
 !!! note "Typical usage example:"

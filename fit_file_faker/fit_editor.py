@@ -1,7 +1,8 @@
 """FIT file editing functionality for Fit File Faker.
 
 This module handles the core FIT file manipulation logic, converting files
-from virtual cycling platforms to appear as Garmin Edge 830 recordings.
+from virtual cycling platforms to appear as Garmin Edge 830 (by default)
+recordings.
 
 The primary class, FitEditor, provides methods to read FIT files, modify
 device metadata (manufacturer and product IDs), and save the modified files

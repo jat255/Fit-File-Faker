@@ -3,8 +3,8 @@
 
 This module provides the command-line interface and core application logic
 for modifying FIT files and uploading them to Garmin Connect. It simulates
-a Garmin Edge 830 device to enable Training Effect calculations for activities
-from non-Garmin sources.
+a Garmin Edge 830 device (by default) to enable Training Effect calculations
+for activities from non-Garmin sources.
 
 The module includes:
 
@@ -16,7 +16,7 @@ The module includes:
 
 Typical usage:
 
-    $ fit-file-faker -s                    # Initial setup
+    $ fit-file-faker --config-menu         # Initial setup
     $ fit-file-faker activity.fit          # Edit single file
     $ fit-file-faker -u activity.fit       # Edit and upload
     $ fit-file-faker -ua                   # Upload all new files
