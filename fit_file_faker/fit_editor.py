@@ -211,8 +211,14 @@ class FitEditor:
         )
         if m.type:
             new_m.type = m.type
-        if m.serial_number is not None:
-            new_m.serial_number = m.serial_number
+        # Use profile serial number if available, otherwise use default
+        if self.profile and self.profile.serial_number:
+            new_m.serial_number = self.profile.serial_number
+        else:
+            # Fallback to default for backwards compatibility
+            new_m.serial_number = 1234567890
+
+        _logger.debug(f"Using serial number: {new_m.serial_number}")
         if m.product_name:
             # garmin does not appear to define product_name, so don't copy it over
             pass
@@ -454,12 +460,6 @@ class FitEditor:
                     def_message, message = self.rewrite_file_id_message(message, i)
                     builder.add(def_message)
                     builder.add(message)
-                    # Also add a customized FileCreatorMessage
-                    creator_message = FileCreatorMessage()
-                    creator_message.software_version = 975
-                    creator_message.hardware_version = 255
-                    builder.add(DefinitionMessage.from_data_message(creator_message))
-                    builder.add(creator_message)
                     continue
 
             if message.global_id == FileCreatorMessage.ID:

@@ -160,6 +160,7 @@ class Profile:
     fitfiles_path: Path
     manufacturer: int | None = None
     device: int | None = None
+    serial_number: int | None = None
 
     def __post_init__(self):
         """Convert string types to proper objects after initialization.
@@ -180,6 +181,12 @@ class Profile:
             self.manufacturer = Manufacturer.GARMIN.value
         if self.device is None:
             self.device = GarminProduct.EDGE_830.value
+
+        # Generate serial number if not specified
+        if self.serial_number is None:
+            import random
+
+            self.serial_number = random.randint(1_000_000_000, 4_294_967_295)
 
     def get_manufacturer_name(self) -> str:
         """Get human-readable manufacturer name.
@@ -214,6 +221,23 @@ class Profile:
             return GarminProduct(self.device).name
         except ValueError:
             return f"UNKNOWN ({self.device})"
+
+    def validate_serial_number(self) -> bool:
+        """Validate that serial_number is valid for FIT spec (uint32z).
+
+        Returns:
+            True if serial_number is valid (1,000,000,000 to 4,294,967,295), False otherwise.
+
+        Examples:
+            >>> profile.serial_number = 1234567890
+            >>> profile.validate_serial_number()
+            True
+        """
+        if self.serial_number is None:
+            return False
+        if not isinstance(self.serial_number, int):
+            return False
+        return 1_000_000_000 <= self.serial_number <= 4_294_967_295
 
 
 @dataclass
@@ -421,6 +445,26 @@ class ConfigManager:
                 # Save migrated config back to file if migration occurred
                 if was_legacy:
                     _logger.debug("Saving migrated config to file")
+                    with self.config_file.open("w") as fw:
+                        json.dump(asdict(config), fw, indent=2, cls=PathEncoder)
+
+                # Migrate profiles without serial numbers
+                migrated = False
+                for profile in config.profiles:
+                    if profile.serial_number is None:
+                        import random
+
+                        profile.serial_number = random.randint(
+                            1_000_000_000, 4_294_967_295
+                        )
+                        migrated = True
+                        _logger.info(
+                            f'Generated serial number for profile "{profile.name}": {profile.serial_number}'
+                        )
+
+                # Save migrated config if serial numbers were added
+                if migrated:
+                    _logger.debug("Saving config with new serial numbers to file")
                     with self.config_file.open("w") as fw:
                         json.dump(asdict(config), fw, indent=2, cls=PathEncoder)
 
@@ -765,6 +809,7 @@ class ProfileManager:
         fitfiles_path: Path,
         manufacturer: int | None = None,
         device: int | None = None,
+        serial_number: int | None = None,
     ) -> Profile:
         """Create a new profile and add it to config.
 
@@ -776,6 +821,7 @@ class ProfileManager:
             fitfiles_path: Path to FIT files directory.
             manufacturer: Manufacturer ID for device simulation (defaults to Garmin).
             device: Device/product ID for device simulation (defaults to Edge 830).
+            serial_number: Device serial number (defaults to auto-generated 10-digit number).
 
         Returns:
             The newly created Profile object.
@@ -806,7 +852,17 @@ class ProfileManager:
             fitfiles_path=fitfiles_path,
             manufacturer=manufacturer,
             device=device,
+            serial_number=serial_number,
         )
+
+        # Validate serial number if provided
+        if serial_number is not None and not profile.validate_serial_number():
+            import random
+
+            _logger.warning(
+                f"Invalid serial number {serial_number}, generating a new one"
+            )
+            profile.serial_number = random.randint(1_000_000_000, 4_294_967_295)
 
         # Add to config and save
         self.config_manager.config.profiles.append(profile)
@@ -844,6 +900,7 @@ class ProfileManager:
         new_name: str | None = None,
         manufacturer: int | None = None,
         device: int | None = None,
+        serial_number: int | None = None,
     ) -> Profile:
         """Update an existing profile.
 
@@ -856,6 +913,7 @@ class ProfileManager:
             new_name: New profile name (optional).
             manufacturer: New manufacturer ID (optional).
             device: New device ID (optional).
+            serial_number: New serial number (optional).
 
         Returns:
             The updated Profile object.
@@ -886,6 +944,21 @@ class ProfileManager:
             profile.manufacturer = manufacturer
         if device is not None:
             profile.device = device
+        if serial_number is not None:
+            # Validate serial number
+            temp_profile = Profile(
+                name="temp",
+                app_type=profile.app_type,
+                garmin_username="",
+                garmin_password="",
+                fitfiles_path=Path(),
+                serial_number=serial_number,
+            )
+            if not temp_profile.validate_serial_number():
+                raise ValueError(
+                    f"Invalid serial number {serial_number}. Must be a 10-digit integer."
+                )
+            profile.serial_number = serial_number
 
         # Update default_profile if name changed
         if new_name and self.config_manager.config.default_profile == name:
@@ -958,6 +1031,7 @@ class ProfileManager:
         table.add_column("Name", style="green", no_wrap=True)
         table.add_column("App", style="blue")
         table.add_column("Device", style="cyan")
+        table.add_column("Serial #", style="bright_blue")
         table.add_column("Garmin User", style="yellow")
         table.add_column("FIT Path", style="magenta")
 
@@ -981,6 +1055,11 @@ class ProfileManager:
             # Get device name
             device_display = profile.get_device_name()
 
+            # Format serial number
+            serial_display = (
+                str(profile.serial_number) if profile.serial_number else "N/A"
+            )
+
             # Truncate long paths
             path_str = str(profile.fitfiles_path)
             if len(path_str) > 40:
@@ -990,6 +1069,7 @@ class ProfileManager:
                 name_display,
                 app_display,
                 device_display,
+                serial_display,
                 profile.garmin_username,
                 path_str,
             )
@@ -1115,6 +1195,7 @@ class ProfileManager:
         # Step 4: Device customization (optional)
         manufacturer = None
         device = None
+        serial_number = None
         customize_device = questionary.confirm(
             "Customize device simulation? (default: Garmin Edge 830)", default=False
         ).ask()
@@ -1173,6 +1254,52 @@ class ProfileManager:
 
             manufacturer = Manufacturer.GARMIN.value
 
+            # Ask about serial number customization
+            customize_serial = questionary.confirm(
+                "Customize serial number for this device?", default=False
+            ).ask()
+
+            if customize_serial:
+                # Show instructions for finding device serial number
+                console.print(
+                    "\n[dim]To find your device's serial number (Unit ID):[/dim]"
+                )
+                console.print(
+                    "[dim]  Garmin Edge: System → About → Copyright Info → Unit ID[/dim]\n"
+                )
+
+                serial_input = questionary.text(
+                    "Enter 10-digit serial number:",
+                    validate=lambda x: (
+                        x.isdigit()
+                        and len(x) == 10
+                        and 1_000_000_000 <= int(x) <= 4_294_967_295
+                    )
+                    or "Must be a 10-digit number between 1000000000 and 4294967295",
+                ).ask()
+
+                if serial_input and serial_input.isdigit():
+                    serial_number = int(serial_input)
+
+            if serial_number is None:
+                # User declined customization, generate random
+                import random
+
+                serial_number = random.randint(1_000_000_000, 4_294_967_295)
+        else:
+            # User declined device customization, still generate serial for default device
+            import random
+
+            serial_number = random.randint(1_000_000_000, 4_294_967_295)
+
+        # Display final device configuration before profile creation
+        device_name = "Edge 830" if device is None else f"Device {device}"
+        console.print(f"\n[cyan]Device:[/cyan] [yellow]{device_name}[/yellow]")
+        console.print(f"[cyan]Serial Number:[/cyan] [yellow]{serial_number}[/yellow]")
+        console.print(
+            "[dim](You can change these later via the edit profile menu)[/dim]"
+        )
+
         # Step 5: Profile name
         suggested_name = app_type.value.split("_")[0].lower()
         profile_name = questionary.text(
@@ -1191,6 +1318,7 @@ class ProfileManager:
                 fitfiles_path=fitfiles_path,
                 manufacturer=manufacturer,
                 device=device,
+                serial_number=serial_number,
             )
             console.print(
                 f"\n[green]✓ Profile '{profile_name}' created successfully![/green]"
@@ -1241,9 +1369,12 @@ class ProfileManager:
         # Ask about device simulation
         new_manufacturer = None
         new_device = None
+        new_serial = None
         current_device = profile.get_device_name()
+        current_serial = profile.serial_number if profile.serial_number else "N/A"
         edit_device = questionary.confirm(
-            f"Edit device simulation? (current: {current_device})", default=False
+            f"Edit device simulation? (current: {current_device}, serial: {current_serial})",
+            default=False,
         ).ask()
 
         if edit_device:
@@ -1296,6 +1427,53 @@ class ProfileManager:
 
                 new_manufacturer = Manufacturer.GARMIN.value
 
+            # Ask about serial number editing
+            edit_serial = questionary.confirm(
+                f"Edit serial number? (current: {current_serial})", default=False
+            ).ask()
+
+            if edit_serial:
+                # Ask if user wants to enter custom or generate random
+                serial_choice = questionary.select(
+                    "How would you like to set the serial number?",
+                    choices=[
+                        questionary.Choice("Generate random serial number", "random"),
+                        questionary.Choice("Enter custom serial number", "custom"),
+                    ],
+                ).ask()
+
+                if serial_choice == "random":
+                    import random
+
+                    new_serial = random.randint(1_000_000_000, 4_294_967_295)
+                    console.print(
+                        f"\n[green]Generated new serial number: {new_serial}[/green]"
+                    )
+                elif serial_choice == "custom":
+                    # Show instructions for finding device serial number
+                    console.print(
+                        "\n[dim]To find your device's serial number (Unit ID):[/dim]"
+                    )
+                    console.print(
+                        "[dim]  Garmin Edge: System → About → Copyright Info → Unit ID[/dim]\n"
+                    )
+
+                    serial_input = questionary.text(
+                        "Enter new 10-digit serial number:",
+                        default=str(profile.serial_number)
+                        if profile.serial_number
+                        else "",
+                        validate=lambda x: (
+                            x.isdigit()
+                            and len(x) == 10
+                            and 1_000_000_000 <= int(x) <= 4_294_967_295
+                        )
+                        or "Must be a 10-digit number between 1000000000 and 4294967295",
+                    ).ask()
+
+                    if serial_input and serial_input.isdigit():
+                        new_serial = int(serial_input)
+
         # Update profile with provided values
         try:
             self.update_profile(
@@ -1306,6 +1484,7 @@ class ProfileManager:
                 fitfiles_path=Path(new_path) if new_path else None,
                 manufacturer=new_manufacturer,
                 device=new_device,
+                serial_number=new_serial,
             )
             console.print("\n[green]✓ Profile updated successfully![/green]")
         except ValueError as e:

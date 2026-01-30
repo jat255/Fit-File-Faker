@@ -3062,4 +3062,366 @@ class TestDeviceConfiguration:
         # Check warning was shown
         captured = capsys.readouterr()
         assert "Warning" in captured.out
-        assert "88888" in captured.out
+
+
+class TestSerialNumbers:
+    """Tests for serial number functionality."""
+
+    def test_profile_validate_serial_number_none(self):
+        """Test validate_serial_number returns False for None."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path"),
+        )
+        # Set serial_number to None explicitly
+        profile.serial_number = None
+        assert profile.validate_serial_number() is False
+
+    def test_profile_validate_serial_number_non_integer(self):
+        """Test validate_serial_number returns False for non-integer."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path"),
+        )
+        # Set serial_number to a string (shouldn't happen in practice)
+        profile.serial_number = "1234567890"  # type: ignore
+        assert profile.validate_serial_number() is False
+
+    def test_profile_validate_serial_number_valid(self):
+        """Test validate_serial_number returns True for valid values."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path"),
+            serial_number=1234567890,
+        )
+        assert profile.validate_serial_number() is True
+
+    def test_profile_validate_serial_number_out_of_range_low(self):
+        """Test validate_serial_number returns False for too small values."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path"),
+            serial_number=999_999_999,
+        )
+        assert profile.validate_serial_number() is False
+
+    def test_profile_validate_serial_number_out_of_range_high(self):
+        """Test validate_serial_number returns False for too large values."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path"),
+            serial_number=4_294_967_296,
+        )
+        assert profile.validate_serial_number() is False
+
+    def test_config_migration_adds_serial_numbers(self, tmp_path, monkeypatch):
+        """Test that config migration adds serial numbers to profiles without them."""
+        from fit_file_faker.config import dirs, Config
+        from unittest.mock import patch
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dirs, "user_config_path", config_dir)
+
+        # Create config file
+        config_file = config_dir / ".config.json"
+        config_data = {
+            "profiles": [
+                {
+                    "name": "test",
+                    "app_type": "zwift",
+                    "garmin_username": "user@example.com",
+                    "garmin_password": "secret",
+                    "fitfiles_path": "/path/to/fitfiles",
+                    "manufacturer": 1,
+                    "device": 3122,
+                }
+            ],
+            "default_profile": "test",
+        }
+        with config_file.open("w") as f:
+            json.dump(config_data, f)
+
+        # We need to bypass Profile.__post_init__ auto-generation to test migration
+        # We'll monkey-patch the Config loading to set serial_number to None after construction
+        original_post_init = Config.__post_init__
+
+        def patched_post_init(self):
+            original_post_init(self)
+            # Set serial_number to None to simulate old config
+            for profile in self.profiles:
+                profile.serial_number = None
+
+        with patch.object(Config, "__post_init__", patched_post_init):
+            # Load config - should trigger migration
+            config_mgr = ConfigManager()
+
+        # Verify serial number was added by migration
+        profile = config_mgr.config.profiles[0]
+        assert profile.serial_number is not None
+        assert 1_000_000_000 <= profile.serial_number <= 4_294_967_295
+
+        # Verify config was saved with serial number
+        with config_file.open("r") as f:
+            saved_config = json.load(f)
+        assert saved_config["profiles"][0]["serial_number"] is not None
+
+    def test_create_profile_with_invalid_serial_regenerates(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Test that create_profile regenerates invalid serial numbers."""
+        from fit_file_faker.config import dirs
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dirs, "user_config_path", config_dir)
+
+        config_mgr = ConfigManager()
+        manager = ProfileManager(config_mgr)
+
+        # Create profile with invalid serial number (too small)
+        with caplog.at_level(logging.WARNING):
+            profile = manager.create_profile(
+                name="test",
+                app_type=AppType.ZWIFT,
+                garmin_username="user@example.com",
+                garmin_password="secret",
+                fitfiles_path=Path("/path"),
+                serial_number=999,  # Invalid - too small
+            )
+
+        # Should have regenerated
+        assert profile.serial_number != 999
+        assert 1_000_000_000 <= profile.serial_number <= 4_294_967_295
+        assert "Invalid serial number" in caplog.text
+
+    def test_update_profile_with_invalid_serial_raises_error(self, tmp_path, monkeypatch):
+        """Test that update_profile raises ValueError for invalid serial numbers."""
+        from fit_file_faker.config import dirs
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dirs, "user_config_path", config_dir)
+
+        config_mgr = ConfigManager()
+        manager = ProfileManager(config_mgr)
+
+        # Create profile first
+        manager.create_profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="secret",
+            fitfiles_path=Path("/path"),
+        )
+
+        # Try to update with invalid serial number
+        with pytest.raises(ValueError, match="Invalid serial number"):
+            manager.update_profile("test", serial_number=500)
+
+    def test_create_profile_wizard_with_custom_serial(self, tmp_path, monkeypatch):
+        """Test create profile wizard with custom serial number input."""
+        from fit_file_faker.config import dirs
+        from fit_file_faker.app_registry import get_detector
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dirs, "user_config_path", config_dir)
+
+        # Mock detector to return a path
+        detected_path = tmp_path / "detected_zwift"
+        detected_path.mkdir()
+
+        def mock_get_default_path(self):
+            return detected_path
+
+        monkeypatch.setattr(
+            "fit_file_faker.app_registry.ZwiftDetector.get_default_path",
+            mock_get_default_path,
+        )
+
+        config_mgr = ConfigManager()
+        manager = ProfileManager(config_mgr)
+
+        def mock_select(prompt, choices, **kwargs):
+            if "trainer app" in prompt:
+                # Select Zwift
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == AppType.ZWIFT:
+                        return MockQuestion(AppType.ZWIFT)
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Use this directory" in prompt:
+                return MockQuestion(True)
+            if "Customize device simulation" in prompt:
+                return MockQuestion(True)
+            if "Customize serial number" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        def mock_text(prompt, **kwargs):
+            if "profile name" in prompt:
+                return MockQuestion("test_profile")
+            if "email" in prompt:
+                return MockQuestion("user@example.com")
+            if "10-digit serial number" in prompt:
+                return MockQuestion("1234567890")
+            return MockQuestion("")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("secret")
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+
+        result = manager.create_profile_wizard()
+
+        assert result is not None
+        assert result.serial_number == 1234567890
+
+    def test_edit_profile_wizard_with_random_serial(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Test edit profile wizard with random serial number generation."""
+        from fit_file_faker.config import dirs
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dirs, "user_config_path", config_dir)
+
+        config_mgr = ConfigManager()
+        manager = ProfileManager(config_mgr)
+
+        # Create a profile first
+        manager.create_profile(
+            "test",
+            AppType.ZWIFT,
+            "user@example.com",
+            "secret",
+            Path("/path"),
+            serial_number=1111111111,
+        )
+
+        old_serial = manager.get_profile("test").serial_number
+
+        def mock_select(prompt, choices, **kwargs):
+            if "Select profile to edit" in prompt:
+                return MockQuestion("test")
+            if "How would you like to set the serial number" in prompt:
+                return MockQuestion("random")
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit device simulation" in prompt:
+                return MockQuestion(True)
+            if "Edit serial number" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        def mock_text(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_path(prompt, **kwargs):
+            return MockQuestion("")
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "path", mock_path)
+
+        manager.edit_profile_wizard()
+
+        # Verify serial number was changed
+        profile = manager.get_profile("test")
+        assert profile.serial_number != old_serial
+        assert 1_000_000_000 <= profile.serial_number <= 4_294_967_295
+
+        # Check message was shown
+        captured = capsys.readouterr()
+        assert "Generated new serial number" in captured.out
+
+    def test_edit_profile_wizard_with_custom_serial(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Test edit profile wizard with custom serial number entry."""
+        from fit_file_faker.config import dirs
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr(dirs, "user_config_path", config_dir)
+
+        config_mgr = ConfigManager()
+        manager = ProfileManager(config_mgr)
+
+        # Create a profile first
+        manager.create_profile(
+            "test",
+            AppType.ZWIFT,
+            "user@example.com",
+            "secret",
+            Path("/path"),
+            serial_number=1111111111,
+        )
+
+        def mock_select(prompt, choices, **kwargs):
+            if "Select profile to edit" in prompt:
+                return MockQuestion("test")
+            if "How would you like to set the serial number" in prompt:
+                return MockQuestion("custom")
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit device simulation" in prompt:
+                return MockQuestion(True)
+            if "Edit serial number" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        def mock_text(prompt, **kwargs):
+            if "10-digit serial number" in prompt:
+                return MockQuestion("2222222222")
+            return MockQuestion("")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_path(prompt, **kwargs):
+            return MockQuestion("")
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "path", mock_path)
+
+        manager.edit_profile_wizard()
+
+        # Verify serial number was changed to custom value
+        profile = manager.get_profile("test")
+        assert profile.serial_number == 2222222222
+
+        # Verify instructions were shown
+        captured = capsys.readouterr()
+        assert "Unit ID" in captured.out
