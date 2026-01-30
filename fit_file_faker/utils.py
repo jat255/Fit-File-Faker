@@ -10,8 +10,8 @@ imported, making it transparent to users of the library.
 
 import logging
 
-from fit_tool.base_type import BaseType
-from fit_tool.field import Field
+from fit_file_faker.vendor.fit_tool.base_type import BaseType
+from fit_file_faker.vendor.fit_tool.field import Field
 
 _logger = logging.getLogger("garmin")
 _original_get_length_from_size = Field.get_length_from_size

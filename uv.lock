@@ -257,8 +257,9 @@ name = "fit-file-faker"
 version = "2.0.3"
 source = { editable = "." }
 dependencies = [
-    { name = "fit-tool" },
+    { name = "bitstruct" },
     { name = "garth" },
+    { name = "openpyxl" },
     { name = "platformdirs" },
     { name = "questionary" },
     { name = "rich" },
@@ -288,8 +289,9 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fit-tool", specifier = ">=0.9.13" },
+    { name = "bitstruct", specifier = "==8.11.1" },
     { name = "garth", specifier = ">=0.5.21" },
+    { name = "openpyxl", specifier = "==2.5.12" },
     { name = "platformdirs", specifier = ">=4.5.1" },
     { name = "questionary", specifier = ">=2.1.1" },
     { name = "rich", specifier = ">=14.2.0" },
@@ -315,19 +317,6 @@ docs = [
     { name = "mkdocs-minify-plugin", specifier = ">=0.8.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.24.0" },
     { name = "mkdocstrings-python", specifier = ">=1.7.0" },
-]
-
-[[package]]
-name = "fit-tool"
-version = "0.9.13"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "bitstruct" },
-    { name = "openpyxl" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0c/8f/9446c4eb9a8e5720b18848b3036653c4fdd0b58746e2c62f1eef05e7632b/fit-tool-0.9.13.tar.gz", hash = "sha256:63d5655dbacf4121178e7743ad4cf0d980abd53da6316a419c205941ce049c55", size = 137841, upload-time = "2022-10-05T18:31:20.446Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3d/c1/27e6ff55c0bca9b61b374f72dad8143908b1d1e792e04e2dbd74ade26857/fit_tool-0.9.13-py3-none-any.whl", hash = "sha256:15269280635ff3a4baedfe1346840767f660817f136f4dec69b858ee855a9e9c", size = 224079, upload-time = "2022-10-05T18:31:18.298Z" },
 ]
 
 [[package]]

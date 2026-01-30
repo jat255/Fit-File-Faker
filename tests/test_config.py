@@ -2577,7 +2577,10 @@ class TestDeviceConfiguration:
 
     def test_profile_with_device_settings(self):
         """Test Profile with custom manufacturer and device settings."""
-        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+            GarminProduct,
+            Manufacturer,
+        )
 
         profile = Profile(
             name="custom",
@@ -2596,7 +2599,10 @@ class TestDeviceConfiguration:
 
     def test_profile_defaults_to_edge_830(self):
         """Test Profile defaults to Garmin Edge 830 when device not specified."""
-        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+            GarminProduct,
+            Manufacturer,
+        )
 
         profile = Profile(
             name="default",
@@ -2631,7 +2637,10 @@ class TestDeviceConfiguration:
 
     def test_create_profile_with_custom_device(self, isolate_config_dirs):
         """Test creating profile with custom device via ProfileManager."""
-        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+            GarminProduct,
+            Manufacturer,
+        )
 
         manager = ProfileManager(ConfigManager())
 
@@ -2652,7 +2661,10 @@ class TestDeviceConfiguration:
 
     def test_update_profile_device(self, isolate_config_dirs):
         """Test updating profile device settings."""
-        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+            GarminProduct,
+            Manufacturer,
+        )
 
         manager = ProfileManager(ConfigManager())
 
@@ -2679,7 +2691,7 @@ class TestDeviceConfiguration:
         self, isolate_config_dirs, monkeypatch, capsys
     ):
         """Test that display_profiles_table shows device column."""
-        from fit_tool.profile.profile_type import GarminProduct
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import GarminProduct
 
         manager = ProfileManager(ConfigManager())
 
@@ -3237,7 +3249,7 @@ class TestDeviceConfiguration:
         self, manager_with_profiles, monkeypatch, capsys
     ):
         """Test edit profile wizard with device customization."""
-        from fit_tool.profile.profile_type import GarminProduct
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import GarminProduct
 
         def mock_select(prompt, choices, **kwargs):
             if "Select profile to edit" in prompt:
@@ -3797,7 +3809,7 @@ class TestSupplementalDevices:
 
     def test_get_device_name_fit_tool_priority(self):
         """Test that fit_tool enum is checked before supplemental registry."""
-        from fit_tool.profile.profile_type import GarminProduct
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import GarminProduct
 
         # Use a device that exists in fit_tool but not supplemental
         profile = Profile(

@@ -13,7 +13,7 @@ from fit_file_faker.utils import apply_fit_tool_patch
 apply_fit_tool_patch()
 
 # Now import FitFile after the monkey patch
-from fit_tool.fit_file import FitFile  # noqa: E402
+from fit_file_faker.vendor.fit_tool.fit_file import FitFile  # noqa: E402
 
 
 # Auto-use fixture to isolate all tests from real config/cache directories

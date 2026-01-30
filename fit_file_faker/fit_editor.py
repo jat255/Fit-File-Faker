@@ -21,14 +21,25 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fit_tool.definition_message import DefinitionMessage
-from fit_tool.fit_file import FitFile
-from fit_tool.fit_file_builder import FitFileBuilder
-from fit_tool.profile.messages.activity_message import ActivityMessage
-from fit_tool.profile.messages.device_info_message import DeviceInfoMessage
-from fit_tool.profile.messages.file_creator_message import FileCreatorMessage
-from fit_tool.profile.messages.file_id_message import FileIdMessage
-from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+from fit_file_faker.vendor.fit_tool.definition_message import DefinitionMessage
+from fit_file_faker.vendor.fit_tool.fit_file import FitFile
+from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
+from fit_file_faker.vendor.fit_tool.profile.messages.activity_message import (
+    ActivityMessage,
+)
+from fit_file_faker.vendor.fit_tool.profile.messages.device_info_message import (
+    DeviceInfoMessage,
+)
+from fit_file_faker.vendor.fit_tool.profile.messages.file_creator_message import (
+    FileCreatorMessage,
+)
+from fit_file_faker.vendor.fit_tool.profile.messages.file_id_message import (
+    FileIdMessage,
+)
+from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+    GarminProduct,
+    Manufacturer,
+)
 
 _logger = logging.getLogger("garmin")
 

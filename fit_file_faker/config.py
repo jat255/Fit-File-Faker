@@ -550,7 +550,7 @@ def get_supported_garmin_devices(show_all: bool = False) -> list[tuple[str, int,
         >>> len(all_devices) > len(devices)
         True
     """
-    from fit_tool.profile.profile_type import GarminProduct
+    from fit_file_faker.vendor.fit_tool.profile.profile_type import GarminProduct
 
     # Step 1: Get devices from fit_tool enum (filtered to cycling/training)
     fit_tool_devices = {}
@@ -664,7 +664,10 @@ class Profile:
         and fitfiles_path may be a string path. Also sets default values
         for manufacturer and device if not specified.
         """
-        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+            GarminProduct,
+            Manufacturer,
+        )
 
         if isinstance(self.app_type, str):
             self.app_type = AppType(self.app_type)
@@ -693,7 +696,7 @@ class Profile:
             >>> profile.get_manufacturer_name()
             'GARMIN'
         """
-        from fit_tool.profile.profile_type import Manufacturer
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import Manufacturer
 
         try:
             return Manufacturer(self.manufacturer).name
@@ -715,7 +718,7 @@ class Profile:
             >>> profile.get_device_name()
             'Edge 1050'
         """
-        from fit_tool.profile.profile_type import GarminProduct
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import GarminProduct
 
         # Try fit_tool enum first
         try:
@@ -1873,7 +1876,9 @@ class ProfileManager:
                     device_selected = True
 
                     # Warn if device ID not in enum or supplemental registry
-                    from fit_tool.profile.profile_type import GarminProduct
+                    from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+                        GarminProduct,
+                    )
 
                     try:
                         GarminProduct(device)
@@ -1903,7 +1908,7 @@ class ProfileManager:
                     software_version = device_info.software_version
 
             # Always use Garmin manufacturer for now
-            from fit_tool.profile.profile_type import Manufacturer
+            from fit_file_faker.vendor.fit_tool.profile.profile_type import Manufacturer
 
             manufacturer = Manufacturer.GARMIN.value
 
@@ -2177,7 +2182,9 @@ class ProfileManager:
                         device_selected = True
 
                         # Warn if device ID not in enum or supplemental registry
-                        from fit_tool.profile.profile_type import GarminProduct
+                        from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+                            GarminProduct,
+                        )
 
                         try:
                             GarminProduct(new_device)
@@ -2211,7 +2218,9 @@ class ProfileManager:
                     new_software_version = device_info.software_version
 
                 # Always use Garmin manufacturer
-                from fit_tool.profile.profile_type import Manufacturer
+                from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+                    Manufacturer,
+                )
 
                 new_manufacturer = Manufacturer.GARMIN.value
 

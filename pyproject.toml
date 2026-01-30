@@ -14,13 +14,14 @@ classifiers = [
 ]
 
 dependencies = [
-    "fit-tool==0.9.13",
     "garth>=0.5.21",
     "platformdirs>=4.5.1",
     "questionary>=2.1.1",
     "rich>=14.2.0",
     "semver>=3.0.4",
     "watchdog>=6.0.0",
+    "bitstruct==8.11.1",
+    "openpyxl==2.5.12"
 ]
 
 [dependency-groups]
@@ -55,7 +56,7 @@ build-backend = "setuptools.build_meta"
 fit-file-faker = "fit_file_faker.app:run"
 
 [tool.setuptools]
-packages = ["fit_file_faker"]
+packages = ["fit_file_faker",  "fit_file_faker.vendor.fit_tool"]
 
 [tool.setuptools.package-data]
 fit_file_faker = ["py.typed"]
@@ -76,6 +77,24 @@ addopts = [
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+]
+
+[tool.ruff]
+exclude = [
+    "fit_file_faker/vendor",
+]
+
+[tool.coverage.run]
+omit = [
+    "fit_file_faker/vendor/*",
+    "*/fit_file_faker/vendor/*",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
 ]
 
 [tool.git-cliff.changelog]

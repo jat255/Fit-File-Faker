@@ -5,10 +5,17 @@ Tests for the FIT file editing functionality.
 from pathlib import Path
 
 import pytest
-from fit_tool.fit_file import FitFile
-from fit_tool.profile.messages.file_creator_message import FileCreatorMessage
-from fit_tool.profile.messages.file_id_message import FileIdMessage
-from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+from fit_file_faker.vendor.fit_tool.fit_file import FitFile
+from fit_file_faker.vendor.fit_tool.profile.messages.file_creator_message import (
+    FileCreatorMessage,
+)
+from fit_file_faker.vendor.fit_tool.profile.messages.file_id_message import (
+    FileIdMessage,
+)
+from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+    GarminProduct,
+    Manufacturer,
+)
 
 from fit_file_faker.fit_editor import FitEditor
 
@@ -210,7 +217,10 @@ class TestCustomDeviceSimulation:
     def test_edit_fit_with_custom_profile(self, tpv_fit_parsed, temp_dir):
         """Test editing FIT file with custom device profile."""
         from fit_file_faker.config import Profile, AppType
-        from fit_tool.profile.profile_type import GarminProduct, Manufacturer
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import (
+            GarminProduct,
+            Manufacturer,
+        )
 
         # Create profile with Edge 1030
         profile = Profile(
@@ -244,7 +254,7 @@ class TestCustomDeviceSimulation:
     def test_set_profile_after_init(self, tpv_fit_parsed, temp_dir):
         """Test setting profile after initialization."""
         from fit_file_faker.config import Profile, AppType
-        from fit_tool.profile.profile_type import GarminProduct
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import GarminProduct
 
         # Create editor without profile
         editor = FitEditor()
