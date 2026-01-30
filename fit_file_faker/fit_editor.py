@@ -460,6 +460,14 @@ class FitEditor:
                     def_message, message = self.rewrite_file_id_message(message, i)
                     builder.add(def_message)
                     builder.add(message)
+                    # Add FileCreatorMessage only if profile has software_version set
+                    if self.profile and self.profile.software_version is not None:
+                        creator_message = FileCreatorMessage()
+                        creator_message.software_version = self.profile.software_version
+                        builder.add(
+                            DefinitionMessage.from_data_message(creator_message)
+                        )
+                        builder.add(creator_message)
                     continue
 
             if message.global_id == FileCreatorMessage.ID:

@@ -2562,20 +2562,18 @@ class TestDeviceConfiguration:
         # Should return a non-empty list
         assert len(devices) > 0
 
-        # Each item should be a tuple (name, id)
+        # Each item should be a tuple (name, id, description)
         for device in devices:
             assert isinstance(device, tuple)
-            assert len(device) == 2
-            name, device_id = device
+            assert len(device) == 3
+            name, device_id, description = device
             assert isinstance(name, str)
             assert isinstance(device_id, int)
+            assert isinstance(description, str)
 
-            # Name should contain one of the keywords
-            assert any(kw in name for kw in ["EDGE", "TACX", "TRAINING"])
-
-        # Should be sorted by name
-        names = [d[0] for d in devices]
-        assert names == sorted(names)
+        # Common devices should be first (not strictly sorted by name anymore)
+        # Just verify we have some devices
+        assert len(devices) >= 11  # At least 11 common devices
 
     def test_profile_with_device_settings(self):
         """Test Profile with custom manufacturer and device settings."""
@@ -3210,7 +3208,9 @@ class TestSerialNumbers:
         assert 1_000_000_000 <= profile.serial_number <= 4_294_967_295
         assert "Invalid serial number" in caplog.text
 
-    def test_update_profile_with_invalid_serial_raises_error(self, tmp_path, monkeypatch):
+    def test_update_profile_with_invalid_serial_raises_error(
+        self, tmp_path, monkeypatch
+    ):
         """Test that update_profile raises ValueError for invalid serial numbers."""
         from fit_file_faker.config import dirs
 
@@ -3237,7 +3237,6 @@ class TestSerialNumbers:
     def test_create_profile_wizard_with_custom_serial(self, tmp_path, monkeypatch):
         """Test create profile wizard with custom serial number input."""
         from fit_file_faker.config import dirs
-        from fit_file_faker.app_registry import get_detector
 
         config_dir = tmp_path / "config"
         config_dir.mkdir(exist_ok=True)
@@ -3425,3 +3424,330 @@ class TestSerialNumbers:
         # Verify instructions were shown
         captured = capsys.readouterr()
         assert "Unit ID" in captured.out
+
+
+class TestSupplementalDevices:
+    """Tests for supplemental device registry and enhanced device selection."""
+
+    def test_garmin_device_info_dataclass(self):
+        """Test GarminDeviceInfo dataclass structure and immutability."""
+        from fit_file_faker.config import GarminDeviceInfo
+
+        device = GarminDeviceInfo(
+            name="Edge 1050",
+            product_id=4440,
+            category="bike_computer",
+            year_released=2024,
+            is_common=True,
+            description="Latest flagship bike computer - 2024",
+        )
+
+        assert device.name == "Edge 1050"
+        assert device.product_id == 4440
+        assert device.category == "bike_computer"
+        assert device.year_released == 2024
+        assert device.is_common is True
+        assert device.description == "Latest flagship bike computer - 2024"
+
+        # Test immutability (frozen=True)
+        with pytest.raises(AttributeError):
+            device.name = "Edge 1040"
+
+    def test_supplemental_devices_no_duplicates(self):
+        """Test that supplemental devices registry has no duplicate product IDs."""
+        from fit_file_faker.config import SUPPLEMENTAL_GARMIN_DEVICES
+
+        product_ids = [d.product_id for d in SUPPLEMENTAL_GARMIN_DEVICES]
+        assert len(product_ids) == len(set(product_ids)), "Duplicate product IDs found"
+
+    def test_supplemental_devices_structure(self):
+        """Test that supplemental devices have expected structure."""
+        from fit_file_faker.config import SUPPLEMENTAL_GARMIN_DEVICES
+
+        assert len(SUPPLEMENTAL_GARMIN_DEVICES) > 0, "Registry should not be empty"
+
+        # Verify at least some common devices exist
+        common_devices = [d for d in SUPPLEMENTAL_GARMIN_DEVICES if d.is_common]
+        assert len(common_devices) >= 11, "Should have at least 11 common devices"
+
+        # Verify categories are valid
+        valid_categories = {"bike_computer", "multisport_watch", "trainer"}
+        for device in SUPPLEMENTAL_GARMIN_DEVICES:
+            assert device.category in valid_categories
+
+    def test_get_supported_garmin_devices_common_only(self):
+        """Test get_supported_garmin_devices with show_all=False (common devices only)."""
+        from fit_file_faker.config import (
+            SUPPLEMENTAL_GARMIN_DEVICES,
+            get_supported_garmin_devices,
+        )
+
+        devices = get_supported_garmin_devices(show_all=False)
+
+        # Should return list of 3-tuples
+        assert len(devices) > 0
+        for device in devices:
+            assert len(device) == 3
+            name, product_id, description = device
+            assert isinstance(name, str)
+            assert isinstance(product_id, int)
+            assert isinstance(description, str)
+
+        # All returned devices should be common devices
+        common_product_ids = {
+            d.product_id for d in SUPPLEMENTAL_GARMIN_DEVICES if d.is_common
+        }
+
+        # Verify that at least the explicitly marked common devices are present
+        device_ids = {d[1] for d in devices}
+        assert common_product_ids.issubset(device_ids)
+
+    def test_get_supported_garmin_devices_show_all(self):
+        """Test get_supported_garmin_devices with show_all=True (all devices)."""
+        from fit_file_faker.config import get_supported_garmin_devices
+
+        common_devices = get_supported_garmin_devices(show_all=False)
+        all_devices = get_supported_garmin_devices(show_all=True)
+
+        # All devices list should be larger than common only
+        assert len(all_devices) > len(common_devices)
+
+        # Verify all common devices are in all devices list
+        common_ids = {device[1] for device in common_devices}
+        all_ids = {device[1] for device in all_devices}
+        assert common_ids.issubset(all_ids)
+
+    def test_get_supported_garmin_devices_sorting(self):
+        """Test that devices are sorted correctly (common first, then year desc, then name asc)."""
+        from fit_file_faker.config import (
+            SUPPLEMENTAL_GARMIN_DEVICES,
+            get_supported_garmin_devices,
+        )
+
+        devices = get_supported_garmin_devices(show_all=True)
+
+        # Find positions of common and non-common devices
+        device_meta = {d.product_id: d for d in SUPPLEMENTAL_GARMIN_DEVICES}
+
+        common_positions = []
+        non_common_positions = []
+
+        for i, (name, product_id, description) in enumerate(devices):
+            if product_id in device_meta:
+                meta = device_meta[product_id]
+                if meta.is_common:
+                    common_positions.append(i)
+                else:
+                    non_common_positions.append(i)
+
+        # Common devices should appear before non-common devices
+        if common_positions and non_common_positions:
+            assert max(common_positions) < min(non_common_positions)
+
+    def test_get_supported_garmin_devices_merging(self):
+        """Test that supplemental devices override fit_tool devices for same product ID."""
+        from fit_file_faker.config import get_supported_garmin_devices
+
+        # Edge 830 (3122) exists in both fit_tool and supplemental registry
+        # Supplemental should override with better name and description
+        all_devices = get_supported_garmin_devices(show_all=True)
+
+        edge_830_devices = [d for d in all_devices if d[1] == 3122]
+        assert len(edge_830_devices) == 1  # Should only have one entry
+
+        name, product_id, description = edge_830_devices[0]
+        assert "Edge 830" in name  # Supplemental registry name format
+        assert description != ""  # Should have description from supplemental
+
+    def test_get_device_name_supplemental_fallback(self):
+        """Test Profile.get_device_name() with supplemental devices."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="test@example.com",
+            garmin_password="password",
+            fitfiles_path=Path("/path/to/files"),
+            device=4440,  # Edge 1050 from supplemental registry
+        )
+
+        device_name = profile.get_device_name()
+        assert device_name == "Edge 1050"
+
+    def test_get_device_name_fit_tool_priority(self):
+        """Test that fit_tool enum is checked before supplemental registry."""
+        from fit_tool.profile.profile_type import GarminProduct
+
+        # Use a device that exists in fit_tool but not supplemental
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="test@example.com",
+            garmin_password="password",
+            fitfiles_path=Path("/path/to/files"),
+            device=GarminProduct.EDGE520.value,  # No underscore in EDGE520
+        )
+
+        device_name = profile.get_device_name()
+        # Should return fit_tool enum name (uppercase, no spaces)
+        assert device_name == "EDGE520"
+
+    def test_get_device_name_unknown_device(self):
+        """Test get_device_name with unknown device ID."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="test@example.com",
+            garmin_password="password",
+            fitfiles_path=Path("/path/to/files"),
+            device=99999,  # Unknown device ID
+        )
+
+        device_name = profile.get_device_name()
+        assert device_name == "UNKNOWN (99999)"
+
+    def test_create_profile_with_modern_device(self):
+        """Test creating a profile with a modern device (Edge 1050)."""
+        config_manager = ConfigManager()
+        profile_manager = ProfileManager(config_manager)
+
+        # Create profile with Edge 1050
+        profile = profile_manager.create_profile(
+            name="test_modern",
+            app_type=AppType.ZWIFT,
+            garmin_username="test@example.com",
+            garmin_password="password",
+            fitfiles_path=Path("/path/to/files"),
+            device=4440,  # Edge 1050
+        )
+
+        assert profile.device == 4440
+        assert profile.get_device_name() == "Edge 1050"
+
+        # Verify it was saved
+        saved_profile = config_manager.config.get_profile("test_modern")
+        assert saved_profile is not None
+        assert saved_profile.device == 4440
+
+    def test_profile_display_with_supplemental_device(self, capsys):
+        """Test that profile table displays supplemental device names correctly."""
+        config_manager = ConfigManager()
+        profile_manager = ProfileManager(config_manager)
+
+        # Create profile with Fenix 8
+        profile_manager.create_profile(
+            name="fenix8_profile",
+            app_type=AppType.ZWIFT,
+            garmin_username="test@example.com",
+            garmin_password="password",
+            fitfiles_path=Path("/path/to/files"),
+            device=4536,  # Fenix 8 47mm
+        )
+
+        # Display profiles table
+        profile_manager.display_profiles_table()
+
+        captured = capsys.readouterr()
+        # The table displays device names on two lines, so check for "Fenix 8" part
+        assert "Fenix 8" in captured.out
+
+    def test_backward_compatibility_existing_profiles(self):
+        """Test that existing profiles with old device IDs still work."""
+        config_manager = ConfigManager()
+
+        # Create profile with Edge 830 (existing in fit_tool and supplemental)
+        profile = Profile(
+            name="legacy",
+            app_type=AppType.ZWIFT,
+            garmin_username="test@example.com",
+            garmin_password="password",
+            fitfiles_path=Path("/path/to/files"),
+            device=3122,  # Edge 830
+        )
+
+        config_manager.config.profiles.append(profile)
+        config_manager.save_config()
+
+        # Reload config
+        config_manager_new = ConfigManager()
+        loaded_profile = config_manager_new.config.get_profile("legacy")
+
+        assert loaded_profile is not None
+        assert loaded_profile.device == 3122
+        # fit_tool priority means it returns EDGE_830, but supplemental overrides in get_supported_garmin_devices
+        device_name = loaded_profile.get_device_name()
+        # Could be either format depending on which registry it came from first
+        assert device_name in ["EDGE_830", "Edge 830"]
+
+    def test_device_picker_structure_common_devices(self, monkeypatch):
+        """Test that device picker groups common devices by category."""
+        from fit_file_faker.config import (
+            SUPPLEMENTAL_GARMIN_DEVICES,
+            get_supported_garmin_devices,
+        )
+
+        devices = get_supported_garmin_devices(show_all=False)
+
+        # Verify bike computers and watches are present
+        bike_computers = [
+            d
+            for d in devices
+            if any(
+                sd.product_id == d[1] and sd.category == "bike_computer"
+                for sd in SUPPLEMENTAL_GARMIN_DEVICES
+            )
+        ]
+        watches = [
+            d
+            for d in devices
+            if any(
+                sd.product_id == d[1] and sd.category == "multisport_watch"
+                for sd in SUPPLEMENTAL_GARMIN_DEVICES
+            )
+        ]
+
+        assert len(bike_computers) > 0, "Should have bike computers"
+        assert len(watches) > 0, "Should have multisport watches"
+
+    def test_device_categories_in_all_view(self):
+        """Test that all devices view includes proper categorization."""
+        from fit_file_faker.config import (
+            SUPPLEMENTAL_GARMIN_DEVICES,
+            get_supported_garmin_devices,
+        )
+
+        all_devices = get_supported_garmin_devices(show_all=True)
+
+        # Verify we have devices from multiple categories
+        categories = set()
+        for name, product_id, desc in all_devices:
+            for device_info in SUPPLEMENTAL_GARMIN_DEVICES:
+                if device_info.product_id == product_id:
+                    categories.add(device_info.category)
+                    break
+
+        # Should have at least 2 categories (bike_computer, multisport_watch)
+        assert len(categories) >= 2
+
+    def test_custom_device_id_validation(self):
+        """Test that custom device IDs are properly validated and saved."""
+        config_manager = ConfigManager()
+        profile_manager = ProfileManager(config_manager)
+
+        # Create profile with custom device ID not in any registry
+        custom_device_id = 88888
+        profile = profile_manager.create_profile(
+            name="custom_device",
+            app_type=AppType.ZWIFT,
+            garmin_username="test@example.com",
+            garmin_password="password",
+            fitfiles_path=Path("/path/to/files"),
+            device=custom_device_id,
+        )
+
+        assert profile.device == custom_device_id
+        assert f"UNKNOWN ({custom_device_id})" in profile.get_device_name()
+
+        # Verify it was saved correctly
+        config_manager_reload = ConfigManager()
+        loaded_profile = config_manager_reload.config.get_profile("custom_device")
+        assert loaded_profile.device == custom_device_id
