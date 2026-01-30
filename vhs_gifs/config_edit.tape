@@ -55,7 +55,7 @@
 #   Hide                            Hide the subsequent commands from the output
 #   Show                            Show the subsequent commands in the output
 
-Output config_edit.gif
+Output config_edit.mp4
 
 Require uv
 
@@ -84,7 +84,7 @@ Enter
 Show
 Sleep 1.5s
 
-# Show directories
+# Open config menu
 Type "uv run fit-file-faker --config-menu" Enter
 Sleep 1.5s
 
@@ -94,21 +94,23 @@ Sleep 1.5s
 Enter
 Sleep 2.5s
 
-Down Sleep 0.75s
-Up Sleep 0.75s
-Down Sleep 0.75s
+# Select first profile
 Enter
 Sleep 2.5s
 
-Type@60ms "Edited MyWhoosh" Sleep 0.5s Enter Sleep 1.5s
+Type@60ms "Edited Zwift" Sleep 0.5s Enter Sleep 1.5s
 Type@60ms "new_user@gmail.com" Sleep 0.5s  Enter Sleep 1.5s
 Type@60ms "123456789" Sleep 0.5s Enter Sleep 1.5s
-Type@60ms "/path/to/MyWhoosh/files" Sleep 0.5s Enter Sleep 1.5s
+Type@60ms "/path/to/Zwift/files" Sleep 0.5s Enter Sleep 1.5s
 Type "y" Sleep 1.5s
-Down@25ms 34 Sleep 1.5s
-Enter
-Sleep 2.5s
 
+# customize device simulation
+Type@60ms "y" Sleep 1.5s
+Down@100ms 14 Sleep 1.55s
+Enter Sleep 1.5s
+Type@60ms "n" Sleep 0.75s
+
+# Exit menu
 Down@250ms 4
 Enter
 

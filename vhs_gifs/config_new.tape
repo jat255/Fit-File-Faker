@@ -55,7 +55,7 @@
 #   Hide                            Hide the subsequent commands from the output
 #   Show                            Show the subsequent commands in the output
 
-Output config_new.gif
+Output config_new.mp4
 
 Require uv
 
@@ -106,8 +106,14 @@ Sleep 2.5s
 
 Type@60ms "user@gmail.com" Sleep 0.5s Enter Sleep 1.5s
 Type@60ms "123456789" Sleep 0.5s Enter Sleep 1.5s
-# use default folder
-Sleep 0.5 Enter Sleep 1.5s
+
+# customize device simulation
+Type@60ms "y" Sleep 1.5s
+Down@0.25s 4 Sleep 0.75s
+Up@0.25s 2 Sleep 0.75s
+Enter Sleep 1.5s
+Type@60ms "y" Sleep 0.75s
+Type@60ms "3456789012" Sleep 0.5s Enter Sleep 1.5s
 
 # enter profile name
 Backspace@250ms 5
