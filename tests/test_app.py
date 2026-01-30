@@ -509,6 +509,187 @@ class TestNewFileEventHandler:
         # But should NOT try to upload if edit failed
         mock_upload.assert_not_called()
 
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_on_modified_adds_to_uploaded_files(
+        self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
+    ):
+        """Test that on_modified adds successfully uploaded files to tracking list."""
+        mock_profile = MagicMock()
+        mock_profile.name = "test_profile"
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=False)
+
+        # Create a mock MyWhoosh file
+        from watchdog.events import FileModifiedEvent
+
+        test_file = temp_dir / "MyNewActivity-12345.fit"
+        test_file.touch()
+
+        # Mock fit_editor to return a path
+        mock_output_file = temp_dir / "output_file.fit"
+        mock_fit_editor.edit_fit.return_value = mock_output_file
+
+        event = FileModifiedEvent(str(test_file))
+
+        # Trigger event
+        handler.on_modified(event)
+
+        # Should upload the file
+        mock_upload.assert_called_once()
+
+        # Verify that the file was added to uploaded_files.json
+        uploaded_list = temp_dir / FILES_UPLOADED_NAME
+        assert uploaded_list.exists()
+
+        with uploaded_list.open("r") as f:
+            uploaded_files = json.load(f)
+
+        assert "MyNewActivity-12345.fit" in uploaded_files
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_on_modified_tracking_idempotent(
+        self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
+    ):
+        """Test that on_modified doesn't add the same file twice to tracking list."""
+        mock_profile = MagicMock()
+        mock_profile.name = "test_profile"
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=False)
+
+        # Create a mock MyWhoosh file
+        from watchdog.events import FileModifiedEvent
+
+        test_file = temp_dir / "MyNewActivity-12345.fit"
+        test_file.touch()
+
+        # Pre-populate the uploaded files list with this file
+        uploaded_list = temp_dir / FILES_UPLOADED_NAME
+        with uploaded_list.open("w") as f:
+            json.dump(["MyNewActivity-12345.fit"], f)
+
+        # Mock fit_editor to return a path
+        mock_output_file = temp_dir / "output_file.fit"
+        mock_fit_editor.edit_fit.return_value = mock_output_file
+
+        event = FileModifiedEvent(str(test_file))
+
+        # Trigger event
+        handler.on_modified(event)
+
+        # Should upload the file
+        mock_upload.assert_called_once()
+
+        # Verify that the file appears only once in the list
+        with uploaded_list.open("r") as f:
+            uploaded_files = json.load(f)
+
+        assert uploaded_files.count("MyNewActivity-12345.fit") == 1
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_on_modified_dryrun_no_tracking(
+        self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
+    ):
+        """Test that dryrun mode doesn't add files to tracking list."""
+        mock_profile = MagicMock()
+        mock_profile.name = "test_profile"
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=True)
+
+        # Create a mock MyWhoosh file
+        from watchdog.events import FileModifiedEvent
+
+        test_file = temp_dir / "MyNewActivity-12345.fit"
+        test_file.touch()
+
+        event = FileModifiedEvent(str(test_file))
+
+        # Trigger event
+        handler.on_modified(event)
+
+        # Should NOT process or track in dryrun mode
+        mock_sleep.assert_not_called()
+        mock_fit_editor.edit_fit.assert_not_called()
+        mock_upload.assert_not_called()
+
+        # Verify that no tracking file was created
+        uploaded_list = temp_dir / FILES_UPLOADED_NAME
+        assert not uploaded_list.exists()
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_mywhoosh_version_update_no_duplicate(
+        self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
+    ):
+        """Test that version updates don't cause duplicate uploads.
+
+        This is the integration test for bug #59. When MyWhoosh updates versions,
+        old version files remain. This test verifies that:
+        1. on_modified() adds successfully uploaded files to tracking
+        2. upload_all() skips files already in the tracking list
+        """
+        mock_profile = MagicMock()
+        mock_profile.name = "test_profile"
+        handler = NewFileEventHandler(profile=mock_profile, dryrun=False)
+
+        # Create the old version file (MyWhoosh 5.5.0)
+        from watchdog.events import FileModifiedEvent
+
+        old_file = temp_dir / "MyNewActivity-5.5.0.fit"
+        old_file.touch()
+
+        # Mock fit_editor to return a path
+        mock_output_file = temp_dir / "output_file.fit"
+        mock_fit_editor.edit_fit.return_value = mock_output_file
+        mock_fit_editor.set_profile = MagicMock()
+
+        # Trigger modification event (simulating MyWhoosh completing the file)
+        event = FileModifiedEvent(str(old_file))
+        handler.on_modified(event)
+
+        # Verify old file was uploaded and tracked
+        assert mock_upload.call_count == 1
+        uploaded_list = temp_dir / FILES_UPLOADED_NAME
+        assert uploaded_list.exists()
+
+        with uploaded_list.open("r") as f:
+            uploaded_files = json.load(f)
+        assert "MyNewActivity-5.5.0.fit" in uploaded_files
+
+        # Now create the new version file (MyWhoosh 5.6.0)
+        new_file = temp_dir / "MyNewActivity-5.6.0.fit"
+        new_file.touch()
+
+        # Reset mocks
+        mock_upload.reset_mock()
+        mock_fit_editor.edit_fit.reset_mock()
+
+        # Now call upload_all directly (simulating what happens when on_created triggers it)
+        # This should skip the old file (already tracked) and only process the new file
+        from fit_file_faker.app import upload_all
+
+        upload_all(temp_dir, profile=mock_profile, dryrun=False)
+
+        # fit_editor.edit_fit should only be called once (for new file)
+        # not twice (which would indicate the old file was also processed)
+        assert mock_fit_editor.edit_fit.call_count == 1
+
+        # Verify only the new file was processed
+        call_args = mock_fit_editor.edit_fit.call_args
+        assert call_args[0][0] == new_file
+
+        # Verify the new file is now in the tracking list
+        with uploaded_list.open("r") as f:
+            uploaded_files = json.load(f)
+
+        assert "MyNewActivity-5.5.0.fit" in uploaded_files
+        assert "MyNewActivity-5.6.0.fit" in uploaded_files
+        # Should only have these two files (no duplicates)
+        assert len(uploaded_files) == 2
+
 
 class TestSelectProfileFunction:
     """Tests for the select_profile function."""

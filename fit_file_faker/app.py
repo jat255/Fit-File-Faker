@@ -208,12 +208,12 @@ class NewFileEventHandler(PatternMatchingEventHandler):
                 if isinstance(p, bytes):
                     p = p.decode()  # pragma: no cover
                 p = cast(str, p)
-                modified_file = Path(p).absolute()
+                source_file = Path(p).absolute()
 
                 # Edit the file and upload it
                 with NamedTemporaryFile(delete=True, delete_on_close=False) as fp:
                     fit_editor.set_profile(self.profile)
-                    output = fit_editor.edit_fit(modified_file, output=Path(fp.name))
+                    output = fit_editor.edit_fit(source_file, output=Path(fp.name))
                     if output:
                         _logger.info(
                             f"Uploading modified file ({output}) to Garmin Connect"
@@ -221,9 +221,23 @@ class NewFileEventHandler(PatternMatchingEventHandler):
                         upload(
                             output,
                             profile=self.profile,
-                            original_path=modified_file,
+                            original_path=source_file,
                             dryrun=self.dryrun,
                         )
+
+                        # Track uploaded file to prevent re-processing
+                        uploaded_list = source_file.parent / FILES_UPLOADED_NAME
+                        uploaded_files = []
+                        if uploaded_list.exists():
+                            with uploaded_list.open("r") as f:
+                                uploaded_files = json.load(f)
+
+                        filename = source_file.name
+                        if filename not in uploaded_files:
+                            uploaded_files.append(filename)
+                            with uploaded_list.open("w") as f:
+                                json.dump(uploaded_files, f, indent=2)
+                            _logger.debug(f'Added "{filename}" to uploaded files list')
             else:
                 _logger.warning(
                     "Found modified file, but not processing because dryrun was requested"
