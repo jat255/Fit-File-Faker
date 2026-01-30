@@ -12,7 +12,7 @@
 
 </div>
 
-This application allows you to easily modify [FIT](https://developer.garmin.com/fit/overview/) files to make them appear to come from a Garmin device (Edge 830 by default, or any supported Garmin cycling device) and upload them to Garmin Connect using the [`garth`](https://github.com/matin/garth/) library. The FIT editing is done using Stages Cycling's [`fit_tool`](https://bitbucket.org/stagescycling/python_fit_tool/src/main/) library.
+This application allows you to easily modify [FIT](https://developer.garmin.com/fit/overview/) files to make them appear to come from a Garmin device (70+ modern devices supported, including Edge 1050, Fenix 8, Forerunner 965, and more) and upload them to Garmin Connect using the [`garth`](https://github.com/matin/garth/) library. The FIT editing is done using Stages Cycling's [`fit_tool`](https://bitbucket.org/stagescycling/python_fit_tool/src/main/) library.
 
 !!! support "Support This Project"
     If FIT File Faker saves you time or enhances your training workflow, consider [buying me a coffee ☕](https://ko-fi.com/josh851356). Your support helps maintain and improve this project!
@@ -177,14 +177,39 @@ By default, FIT File Faker modifies files to appear as if they came from a **Gar
 
 ### Supported Devices
 
-The tool supports simulation of any Garmin cycling/training device, including:
+The tool supports **70+ modern Garmin devices** (2019-2026) organized into categories:
 
-- **Edge Series**: Edge 130, Edge 520, Edge 530, Edge 830, Edge 1030, Edge 1040, etc.
-- **Tacx Trainers**: Tacx NEO series and other Tacx smart trainers
-- **Training Devices**: Various other Garmin training computers
+**Popular Bike Computers:**
+- **Edge 1050** - Latest flagship bike computer (2024)
+- **Edge 1040** - Multi-band GNSS bike computer (2022)
+- **Edge 840** - Mid-range touchscreen (2023)
+- **Edge 830** - Current default, widely used (2019)
+- **Edge 540** - Mid-range button-based (2023)
+- **Edge 530** - Popular non-touchscreen (2019)
 
-!!! info "Device Selection"
-    During profile creation or editing, you can optionally customize which Garmin device to simulate. The tool presents a filtered list of ~66 supported Garmin cycling and training devices.
+**Popular Multisport Watches:**
+- **Fenix 8 47mm** - Latest flagship AMOLED watch (2024)
+- **Fenix 7** - Popular multisport watch (2022)
+- **Epix Gen 2** - AMOLED multisport watch (2022)
+- **Forerunner 965** - Premium running/cycling watch (2023)
+- **Forerunner 955** - Running watch with maps (2022)
+
+**Additional Devices:**
+- Edge series variants (1030 Plus, 520 Plus, 130 Plus, etc.)
+- Fenix 8 variants (Solar, Pro, different sizes)
+- Fenix 7 variants (S, X, Pro Solar)
+- Epix Pro variants (42mm, 47mm, 51mm)
+- Forerunner series (945, 265, 255, and variants)
+- Tacx Training App (Windows, Mac, Android, iOS)
+
+!!! info "Two-Level Device Selection"
+    During profile creation or editing, the tool uses a curated two-level menu system:
+
+    **Level 1**: Shows 11 common devices grouped by category (bike computers, watches)
+
+    **Level 2**: Access 70+ devices via "View all devices" option
+
+    This reduces cognitive load while maintaining access to the full device catalog.
 
 ### Customizing Device Simulation
 
@@ -196,11 +221,12 @@ When creating or editing a profile via `--config-menu`, you'll be prompted:
 
 If you select **Yes**, you can:
 
-1. **Choose from a list** of supported Garmin devices (Edge, Tacx, Training series)
-2. **Enter a custom numeric device ID** for newer devices not yet in the list
+1. **Choose from common devices** - Curated list of 11 popular devices
+2. **View all devices** - Access full catalog of 70+ devices organized by category
+3. **Enter a custom numeric device ID** - For devices not yet in the registry
 
 !!! tip "Custom Device IDs"
-    If you enter a numeric device ID that's not recognized, the tool will show a warning but still create/update the profile. This allows using newer Garmin devices that may not be in the library yet.
+    If you enter a numeric device ID that's not in the registry, the tool will show a warning but still create/update the profile. This allows using newer Garmin devices or less common models.
 
 ### Example: Different Devices for Different Profiles
 

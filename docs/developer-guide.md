@@ -201,6 +201,135 @@ The tool follows a six-step process:
 - Stored in platform-specific user config directory (via `platformdirs`) as `.config.json`
 - Auto-detection via `app_registry.py` for TPV, Zwift, MyWhoosh directories
 
+**Supplemental Device Registry**:
+
+The tool maintains a curated list of modern Garmin devices (2019-2026) to supplement the outdated device list in the `fit_tool` library.
+
+- `GarminDeviceInfo` dataclass: Metadata for each device
+    - `name`: Human-readable name (e.g., "Edge 1050")
+    - `product_id`: FIT file product ID integer
+    - `category`: Device category (`bike_computer`, `multisport_watch`, `trainer`)
+    - `year_released`: Release year for sorting
+    - `is_common`: Flag for two-level menu filtering
+    - `description`: Brief description for UI display
+    - `software_version`: Latest stable firmware version (integer format, e.g., 2922 = v29.22)
+    - `software_date`: Latest firmware release date (YYYY-MM-DD format)
+
+- `SUPPLEMENTAL_GARMIN_DEVICES`: Registry containing 43 modern devices
+    - **Common devices** (`is_common=True`): 11 popular devices shown in first-level menu
+        - Bike computers: Edge 1050, 1040, 840, 830, 540, 530
+        - Multisport watches: Fenix 8 47mm, Fenix 7, Epix Gen 2, Forerunner 965, 955
+    - **All devices**: Complete catalog accessible via "View all devices" option
+        - Edge series (9 models)
+        - Fenix/Epix series (18 models)
+        - Forerunner series (12 models)
+        - Tacx Training App (4 variants)
+
+- `get_supported_garmin_devices(show_all: bool = False)`: Device list generator
+    - Returns 3-tuples: `(name, product_id, description)`
+    - Merges `fit_tool` enum with supplemental registry (supplemental takes priority)
+    - Filters by `is_common` when `show_all=False` (default)
+    - Sorting: common devices first, then by year (newest first), then alphabetically
+
+**Device Selection UI**:
+
+The profile creation and editing wizards use a two-level menu system:
+
+- **Level 1**: Common devices grouped by category with visual separators
+    - Shows only 11 curated devices for reduced cognitive load
+    - Includes "View all devices" and "Custom (enter numeric ID)" options
+
+- **Level 2**: Full device catalog (70+ devices)
+    - Accessed via "View all devices" option
+    - Categorized and sorted by release year
+    - "Back to common devices" navigation option
+
+**Device Reference Data**:
+
+Device metadata is maintained in `docs/reference/FitSDK_21.188.00_device_ids.csv`:
+
+```csv
+Name,Value,Comment,Software Version,Software Date
+edge_1050,4440,,2922,2025-11-04
+fenix8,4536,,2029,2026-01-14
+fr965,4315,,2709,2026-01-15
+edge_830,3122,,975,2023-03-22
+```
+
+**Column definitions**:
+
+- **Name**: Device name (lowercase with underscores)
+- **Value**: Product ID (integer used in FIT files)
+- **Comment**: Optional notes (usually empty)
+- **Software Version**: Firmware version in FIT format (integer, last 2 digits are decimals)
+- **Software Date**: Firmware release date (YYYY-MM-DD)
+
+**Firmware Version Format**:
+
+FIT files store firmware versions as integers where the last two digits represent decimal places:
+
+- `v29.22` → `2922`
+- `v9.75` → `975`
+- `v27.09` → `2709`
+
+**Firmware Data Source**:
+
+Firmware versions are sourced from [gpsinformation.net](http://gpsinformation.net/allory/test/garfeat_index.htm), a comprehensive database of Garmin device firmware releases.
+
+- **URL pattern**: `http://gpsinformation.net/allory/test/garfeat_<device>.htm`
+- **Example**: [Edge 1050 firmware history](http://gpsinformation.net/allory/test/garfeat_edge1050.htm#edge1050)
+- **Data extracted**: Latest stable (non-beta) firmware version and release date
+- **SSL note**: The site uses an expired certificate, use `curl -k` to bypass SSL verification
+
+**Extraction scripts** (for maintenance):
+
+```bash
+# Extract firmware versions from gpsinformation.net
+./extract_firmware_versions.sh
+
+# Update CSV with extracted data
+python3 update_firmware_csv.py
+```
+
+**Adding New Devices**:
+
+To add support for a new Garmin device:
+
+1. **Find product ID**: Check the [FIT SDK](https://developer.garmin.com/fit/protocol/) or examine a FIT file from the device
+2. **Extract firmware data**: Visit `http://gpsinformation.net/allory/test/garfeat_<device>.htm`
+3. **Add to supplemental registry** in `config.py`:
+   ```python
+   GarminDeviceInfo(
+       name="Edge 2000",
+       product_id=9999,
+       category="bike_computer",
+       year_released=2026,
+       is_common=False,  # Set True only for popular devices
+       description="Next-gen flagship bike computer",
+       software_version=3000,  # v30.00 in FIT format
+       software_date="2026-03-15"
+   ),
+   ```
+4. **Update CSV file**: Add entry to `docs/reference/FitSDK_21.188.00_device_ids.csv`
+5. **Add tests**: Update `tests/test_config.py` with new device validation
+
+**Updating Firmware Versions**:
+
+Firmware versions should be periodically updated to reflect latest stable releases:
+
+1. Run `./extract_firmware_versions.sh` to fetch latest versions
+2. Review output and update `update_firmware_csv.py` with new data
+3. Run `python3 update_firmware_csv.py` to update the CSV
+4. Manually update corresponding entries in `SUPPLEMENTAL_GARMIN_DEVICES`
+5. Verify with tests: `python3 run_tests.py tests/test_config.py`
+
+**Backward Compatibility**:
+
+- Existing profiles with numeric device IDs continue to work unchanged
+- `Profile.get_device_name()` prioritizes `fit_tool` enum, then falls back to supplemental registry
+- Unknown device IDs display as `UNKNOWN (<id>)`
+- Custom device IDs can still be entered manually via profile wizard
+
 #### `fit_editor.py` - FIT File Editing
 
 - `FitEditor` class: Main editor with logging filter for fit_tool warnings
@@ -350,14 +479,25 @@ then the message itself.
 
 `FitFileBuilder(auto_define=True)` handles definition messages automatically when `add()` is called.
 
-### Edge 830 Simulation
+### Device Simulation
 
-The tool specifically emulates a **Garmin Edge 830** with these values:
+The tool emulates Garmin devices by rewriting manufacturer and product IDs in FIT files. The specific device can be configured per-profile.
+
+**Default device** (if not configured):
 
 - **Manufacturer**: 1 (`GARMIN`)
 - **Product**: 3122 (`EDGE_830`)
-- **Software version**: 975 (in `FileCreatorMessage`)
+- **Software version**: 975 (v9.75 in FIT format)
 - **Hardware version**: 255
+
+**Supported devices**: 70+ devices from the supplemental registry and `fit_tool` library, including:
+
+- Modern bike computers (Edge 1050, 1040, 840, 540, etc.)
+- Multisport watches (Fenix 8, Fenix 7, Epix Gen 2, etc.)
+- Running watches (Forerunner 965, 955, 265, 255, etc.)
+- Training apps (Tacx Training App variants)
+
+**Custom device IDs**: Users can enter any numeric device ID manually during profile configuration.
 
 ### File Naming Convention
 

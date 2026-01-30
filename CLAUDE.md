@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Fit File Faker is a Python tool that modifies FIT (Flexible and Interoperable Data Transfer) files to make them appear as if they came from a Garmin Edge 830 device. The primary use case is enabling Garmin Connect's "Training Effect" calculations for activities from non-Garmin sources like TrainingPeaks Virtual (formerly indieVelo), Zwift, and other cycling platforms.
+Fit File Faker is a Python tool that modifies FIT (Flexible and Interoperable Data Transfer) files to make them appear as if they came from Garmin devices. The primary use case is enabling Garmin Connect's "Training Effect" calculations for activities from non-Garmin sources like TrainingPeaks Virtual (formerly indieVelo), Zwift, and other cycling platforms.
+
+Users can configure which Garmin device to emulate (Edge 1050, Fenix 8, Forerunner 965, etc.) with per-profile settings. The tool supports 70+ modern Garmin devices with appropriate firmware versions.
 
 The tool is distributed as a Python package via PyPI as `fit-file-faker`.
 
@@ -104,7 +106,7 @@ fit_file_faker/
 **`config.py` - Configuration Management**
 - **Multi-Profile Architecture**: Supports multiple profiles with different Garmin accounts and trainer apps
 - `AppType` enum: TP_VIRTUAL, ZWIFT, MYWHOOSH, CUSTOM for trainer app types
-- `Profile` dataclass: Holds profile-specific settings (name, app_type, credentials, fitfiles_path)
+- `Profile` dataclass: Holds profile-specific settings (name, app_type, credentials, fitfiles_path, manufacturer, device, serial_number)
 - `Config` dataclass: Contains `profiles: list[Profile]` and `default_profile: str | None`
 - `ConfigManager`: Handles config file I/O, validation, auto-migration from v1.2.4 format
 - `ProfileManager`: CRUD operations for profile management (create, read, update, delete, set_default)
@@ -113,6 +115,16 @@ fit_file_faker/
 - Stored in platform-specific user config directory (via `platformdirs`) as `.config.json`
 - **Auto-detection**: Platform-specific directory detection for TPV, Zwift, MyWhoosh via `app_registry.py`
 - **TUI**: Rich-based interactive menu system for profile management
+
+**Supplemental Device Registry** (in `config.py`):
+- `GarminDeviceInfo` dataclass: Metadata for modern Garmin devices (name, product_id, category, year_released, is_common, description, software_version, software_date)
+- `SUPPLEMENTAL_GARMIN_DEVICES`: Registry of 43 modern devices (2019-2026) to supplement outdated fit_tool enum
+- `get_supported_garmin_devices(show_all)`: Returns device list for picker UI, merges fit_tool + supplemental
+- **Two-level device picker**: Common devices (11) shown first, "View all devices" option shows full catalog (70+)
+- **Device categories**: bike_computer, multisport_watch, trainer
+- **Firmware data source**: Extracted from http://gpsinformation.net/allory/test/garfeat_index.htm
+- **Device reference CSV**: `docs/reference/FitSDK_21.188.00_device_ids.csv` contains product IDs, firmware versions, and release dates
+- **FIT version format**: Integer where last 2 digits are decimals (e.g., 2922 = v29.22, 975 = v9.75)
 
 **`fit_editor.py` - FIT File Editing**
 - `FitEditor` class: Main editor with logging filter for fit_tool warnings
@@ -200,12 +212,26 @@ The tool recognizes and modifies FIT files from:
 - When rewriting messages, always write: `DefinitionMessage.from_data_message(message)` then the message itself
 - `FitFileBuilder(auto_define=True)` handles definition messages automatically when `add()` is called
 
-### Edge 830 Simulation
-The tool specifically emulates a Garmin Edge 830 with these values:
+### Device Simulation
+The tool emulates Garmin devices by rewriting manufacturer and product IDs in FIT files. The specific device can be configured per-profile.
+
+**Default device** (if not configured):
 - Manufacturer: 1 (GARMIN)
 - Product: 3122 (EDGE_830)
-- Software version: 975 (in FileCreatorMessage)
+- Software version: 975 (v9.75 in FIT format)
 - Hardware version: 255
+
+**Supported devices**: 70+ devices from supplemental registry and fit_tool library, including:
+- Modern bike computers (Edge 1050, 1040, 840, 540, etc.)
+- Multisport watches (Fenix 8, Fenix 7, Epix Gen 2, etc.)
+- Running watches (Forerunner 965, 955, 265, 255, etc.)
+- Training apps (Tacx Training App variants)
+
+**Custom device IDs**: Users can enter any numeric device ID manually during profile configuration.
+
+**Firmware version maintenance**: Versions sourced from gpsinformation.net can be updated via extraction scripts:
+- `./extract_firmware_versions.sh` - Fetches latest firmware data from gpsinformation.net
+- `python3 update_firmware_csv.py` - Updates CSV with extracted firmware versions/dates
 
 ### File Naming Convention
 Modified files are saved as `{original_stem}_modified.fit` unless uploading in batch mode (which uses temp files).
