@@ -251,3 +251,248 @@ def mock_garth_with_login(mock_garth_basic):
     mock_garth.save.return_value = None
 
     return mock_garth, mock_garth_exc
+
+
+# ==============================================================================
+# Questionary Mock Fixtures
+# ==============================================================================
+
+
+@pytest.fixture
+def mock_questionary_empty_responses(monkeypatch):
+    """Mock all questionary inputs to return empty strings."""
+    import questionary
+
+    monkeypatch.setattr(questionary, "text", lambda *a, **k: MockQuestion(""))
+    monkeypatch.setattr(questionary, "password", lambda *a, **k: MockQuestion(""))
+    monkeypatch.setattr(questionary, "path", lambda *a, **k: MockQuestion(""))
+    monkeypatch.setattr(questionary, "confirm", lambda *a, **k: MockQuestion(False))
+    monkeypatch.setattr(questionary, "select", lambda *a, **k: MockQuestion(None))
+
+
+@pytest.fixture
+def mock_questionary_profile_inputs(monkeypatch):
+    """Mock questionary for standard profile creation (user@example.com, password123)."""
+    import questionary
+
+    def mock_text(prompt, **kwargs):
+        if "email" in prompt.lower() or "username" in prompt.lower():
+            return MockQuestion("user@example.com")
+        elif "name" in prompt.lower() and "profile" in prompt.lower():
+            return MockQuestion("test_profile")
+        return MockQuestion("")
+
+    def mock_password(prompt, **kwargs):
+        return MockQuestion("password123")
+
+    monkeypatch.setattr(questionary, "text", mock_text)
+    monkeypatch.setattr(questionary, "password", mock_password)
+    monkeypatch.setattr(questionary, "confirm", lambda *a, **k: MockQuestion(True))
+
+
+@pytest.fixture
+def mock_questionary_factory(monkeypatch):
+    """
+    Factory fixture for creating custom questionary mocks.
+
+    Returns a function that accepts various response configurations.
+    """
+    import questionary
+
+    def _create_mocks(
+        text_responses=None,
+        password_response="password",
+        confirm_response=True,
+        select_responses=None,
+        path_response=None,
+    ):
+        """
+        Create questionary mocks with custom responses.
+
+        Args:
+            text_responses: Dict mapping prompt keywords to responses, or single string
+            password_response: String response for password prompts
+            confirm_response: Boolean for confirm prompts
+            select_responses: List of responses for select calls (cycles through)
+            path_response: String response for path prompts
+        """
+        # Text mock
+        if isinstance(text_responses, dict):
+
+            def mock_text(prompt, **kwargs):
+                for keyword, response in text_responses.items():
+                    if keyword.lower() in prompt.lower():
+                        return MockQuestion(response)
+                return MockQuestion("")
+
+        elif isinstance(text_responses, str):
+
+            def mock_text(*a, **k):
+                return MockQuestion(text_responses)
+
+        else:
+
+            def mock_text(*a, **k):
+                return MockQuestion("")
+
+        # Password mock
+        def mock_password(*a, **k):
+            return MockQuestion(password_response)
+
+        # Confirm mock
+        def mock_confirm(*a, **k):
+            return MockQuestion(confirm_response)
+
+        # Select mock with cycling through responses
+        if select_responses:
+            select_call_count = {"count": 0}
+
+            def mock_select(prompt, choices=None, **kwargs):
+                idx = select_call_count["count"]
+                select_call_count["count"] += 1
+                if idx < len(select_responses):
+                    return MockQuestion(select_responses[idx])
+                return MockQuestion(select_responses[-1])
+
+        else:
+
+            def mock_select(*a, **k):
+                return MockQuestion(None)
+
+        # Path mock
+        if path_response:
+
+            def mock_path(*a, **k):
+                return MockQuestion(path_response)
+
+        else:
+
+            def mock_path(*a, **k):
+                return MockQuestion("")
+
+        # Apply patches
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "path", mock_path)
+
+    return _create_mocks
+
+
+# ==============================================================================
+# Profile and Config Fixtures
+# ==============================================================================
+
+
+@pytest.fixture
+def standard_profile():
+    """Create a standard test profile with ZWIFT app type."""
+    from pathlib import Path
+
+    from fit_file_faker.config import AppType, Profile
+
+    return Profile(
+        name="test",
+        app_type=AppType.ZWIFT,
+        garmin_username="user@example.com",
+        garmin_password="password",
+        fitfiles_path=Path("/path/to/fitfiles"),
+    )
+
+
+@pytest.fixture
+def profile_manager(tmp_path, monkeypatch):
+    """Create ProfileManager with temporary config and cache directories."""
+    from fit_file_faker.config import ConfigManager, ProfileManager, dirs
+
+    config_dir = tmp_path / "config"
+    cache_dir = tmp_path / "cache"
+    config_dir.mkdir(exist_ok=True)
+    cache_dir.mkdir(exist_ok=True)
+
+    monkeypatch.setattr(dirs, "user_config_path", config_dir)
+    monkeypatch.setattr(dirs, "user_cache_path", cache_dir)
+
+    return ProfileManager(ConfigManager())
+
+
+@pytest.fixture
+def two_profile_manager(tmp_path, monkeypatch):
+    """ProfileManager pre-populated with two test profiles."""
+    from pathlib import Path
+
+    from fit_file_faker.config import AppType, ConfigManager, ProfileManager, dirs
+
+    config_dir = tmp_path / "config"
+    cache_dir = tmp_path / "cache"
+    config_dir.mkdir(exist_ok=True)
+    cache_dir.mkdir(exist_ok=True)
+
+    monkeypatch.setattr(dirs, "user_config_path", config_dir)
+    monkeypatch.setattr(dirs, "user_cache_path", cache_dir)
+
+    mgr = ProfileManager(ConfigManager())
+    mgr.create_profile(
+        "profile1",
+        AppType.ZWIFT,
+        "user1@example.com",
+        "pass1",
+        Path("/path/to/fit1"),
+    )
+    mgr.create_profile(
+        "profile2",
+        AppType.TP_VIRTUAL,
+        "user2@example.com",
+        "pass2",
+        Path("/path/to/fit2"),
+    )
+    return mgr
+
+
+# ==============================================================================
+# Mock App Detector Fixtures
+# ==============================================================================
+
+
+@pytest.fixture
+def mock_detector_factory(monkeypatch):
+    """Factory for creating mock app detectors with configurable behavior."""
+
+    def _create_detector(
+        display_name="Test App", default_path=None, short_name=None, app_type=None
+    ):
+        """
+        Create and install a mock app detector.
+
+        Args:
+            display_name: Display name returned by get_display_name()
+            default_path: Path object or None returned by get_default_path()
+            short_name: Short name for the app (defaults to display_name)
+            app_type: AppType to associate with this detector
+
+        Returns:
+            The MockDetector class (for additional assertions if needed)
+        """
+
+        class MockDetector:
+            def get_default_path(self):
+                return default_path
+
+            def get_display_name(self):
+                return display_name
+
+            def get_short_name(self):
+                return short_name or display_name
+
+            def validate_path(self, path):
+                return True
+
+        # Install the mock
+        monkeypatch.setattr(
+            "fit_file_faker.app_registry.get_detector", lambda x: MockDetector()
+        )
+
+        return MockDetector
+
+    return _create_detector

@@ -316,7 +316,7 @@ tests/
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (use -n auto for parallel execution)
 python3 run_tests.py
 
 # With coverage report (HTML)
@@ -325,8 +325,11 @@ python3 run_tests.py --html
 # Verbose output
 python3 run_tests.py -v
 
-# Using pytest directly
-uv run pytest tests/
+# Using pytest directly (with parallel execution)
+uv run pytest tests/ -n auto
+
+# With coverage
+uv run pytest tests/ -n auto --cov=fit_file_faker --cov-report=term-missing
 ```
 
 ### Continuous Integration

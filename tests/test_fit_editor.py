@@ -6,22 +6,34 @@ from pathlib import Path
 
 import pytest
 from fit_tool.fit_file import FitFile
+from fit_tool.profile.messages.file_creator_message import FileCreatorMessage
 from fit_tool.profile.messages.file_id_message import FileIdMessage
 from fit_tool.profile.profile_type import GarminProduct, Manufacturer
 
 from fit_file_faker.fit_editor import FitEditor
 
 
-def verify_garmin_device_info(fit_file_path: Path):
+def verify_garmin_device_info(
+    fit_file_path: Path,
+    expected_product=None,
+    expected_manufacturer=None,
+):
     """
-    Helper function to verify a FIT file has been modified to Garmin Edge 830.
+    Helper function to verify a FIT file has been modified to specified Garmin device.
 
     Args:
         fit_file_path: Path to the FIT file to verify
+        expected_product: Expected product ID (defaults to EDGE_830)
+        expected_manufacturer: Expected manufacturer ID (defaults to GARMIN)
 
     Raises:
         AssertionError: If FileIdMessage not found or not properly modified
     """
+    if expected_product is None:
+        expected_product = GarminProduct.EDGE_830.value
+    if expected_manufacturer is None:
+        expected_manufacturer = Manufacturer.GARMIN.value
+
     modified_fit = FitFile.from_file(str(fit_file_path))
 
     file_id_found = False
@@ -29,11 +41,11 @@ def verify_garmin_device_info(fit_file_path: Path):
         message = record.message
         if isinstance(message, FileIdMessage):
             file_id_found = True
-            assert message.manufacturer == Manufacturer.GARMIN.value, (
-                f"Expected manufacturer GARMIN but got {message.manufacturer}"
+            assert message.manufacturer == expected_manufacturer, (
+                f"Expected manufacturer {expected_manufacturer} but got {message.manufacturer}"
             )
-            assert message.product == GarminProduct.EDGE_830.value, (
-                f"Expected product EDGE_830 but got {message.product}"
+            assert message.product == expected_product, (
+                f"Expected product {expected_product} but got {message.product}"
             )
             break
 
@@ -223,17 +235,10 @@ class TestCustomDeviceSimulation:
         assert output_file.exists()
 
         # Verify it uses Edge 1030 instead of Edge 830
-        modified_fit = FitFile.from_file(str(output_file))
-        file_id_found = False
-        for record in modified_fit.records:
-            message = record.message
-            if isinstance(message, FileIdMessage):
-                file_id_found = True
-                assert message.manufacturer == Manufacturer.GARMIN.value
-                assert message.product == GarminProduct.EDGE_1030.value
-                break
-
-        assert file_id_found
+        verify_garmin_device_info(
+            output_file,
+            expected_product=GarminProduct.EDGE_1030.value,
+        )
 
     @pytest.mark.slow
     def test_set_profile_after_init(self, tpv_fit_parsed, temp_dir):
@@ -262,12 +267,10 @@ class TestCustomDeviceSimulation:
 
         # Verify the file uses Edge 1030
         assert result == output_file
-        modified_fit = FitFile.from_file(str(output_file))
-        for record in modified_fit.records:
-            message = record.message
-            if isinstance(message, FileIdMessage):
-                assert message.product == GarminProduct.EDGE_1030.value
-                break
+        verify_garmin_device_info(
+            output_file,
+            expected_product=GarminProduct.EDGE_1030.value,
+        )
 
     @pytest.mark.slow
     def test_edit_fit_without_profile_uses_defaults(self, tpv_fit_parsed, temp_dir):
@@ -281,10 +284,41 @@ class TestCustomDeviceSimulation:
 
         # Verify it uses default Edge 830
         assert result == output_file
+        verify_garmin_device_info(output_file)  # Uses default Edge 830
+
+    @pytest.mark.slow
+    def test_edit_fit_with_software_version(self, tpv_fit_parsed, temp_dir):
+        """Test that FileCreatorMessage is created when profile has software_version."""
+        from fit_file_faker.config import Profile, AppType
+
+        # Create profile with software_version
+        # Using Edge 1050 (device ID 4440) from supplemental registry
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            device=4440,  # Edge 1050
+            software_version=2922,  # v29.22 in FIT format
+        )
+
+        editor = FitEditor(profile=profile)
+        output_file = temp_dir / "with_software_version.fit"
+
+        # Edit the file
+        result = editor.edit_fit(tpv_fit_parsed, output=output_file)
+
+        # Verify FileCreatorMessage exists with software_version
+        assert result == output_file
         modified_fit = FitFile.from_file(str(output_file))
+
+        file_creator_found = False
         for record in modified_fit.records:
             message = record.message
-            if isinstance(message, FileIdMessage):
-                assert message.manufacturer == Manufacturer.GARMIN.value
-                assert message.product == GarminProduct.EDGE_830.value
+            if isinstance(message, FileCreatorMessage):
+                file_creator_found = True
+                assert message.software_version == 2922
                 break
+
+        assert file_creator_found, "FileCreatorMessage not found in modified file"

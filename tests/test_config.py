@@ -2969,6 +2969,270 @@ class TestDeviceConfiguration:
         # Should return None when custom device ID input is cancelled
         assert result is None
 
+    def test_create_profile_wizard_view_all_devices(
+        self, profile_manager, monkeypatch, mock_detector_factory, capsys
+    ):
+        """Test create profile wizard with 'View all devices' flow."""
+        mock_detector_factory("Test App", default_path=Path("/detected/path"))
+
+        call_tracker = {"select_count": 0}
+
+        def mock_select(prompt, choices, **kwargs):
+            call_tracker["select_count"] += 1
+            if "trainer app" in prompt:
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == AppType.ZWIFT:
+                        return MockQuestion(AppType.ZWIFT)
+            elif "device to simulate" in prompt:
+                if call_tracker["select_count"] == 2:
+                    # First device menu: select "View all devices"
+                    for choice in choices:
+                        if hasattr(choice, "value") and choice.value == (
+                            "VIEW_ALL",
+                            None,
+                        ):
+                            return MockQuestion(("VIEW_ALL", None))
+                elif call_tracker["select_count"] == 3:
+                    # Second device menu (now showing all): select a device from category
+                    # This will trigger the category grouping code (lines 1799-1831)
+                    for choice in choices:
+                        if hasattr(choice, "value"):
+                            if (
+                                isinstance(choice.value, tuple)
+                                and len(choice.value) == 2
+                            ):
+                                name, device_id = choice.value
+                                if isinstance(device_id, int) and device_id > 0:
+                                    return MockQuestion((name, device_id))
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Use this directory" in prompt:
+                return MockQuestion(True)
+            elif "Customize device" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(
+            questionary, "text", lambda *a, **k: MockQuestion("user@example.com")
+        )
+        monkeypatch.setattr(
+            questionary, "password", lambda *a, **k: MockQuestion("pass")
+        )
+
+        result = profile_manager.create_profile_wizard()
+
+        assert result is not None
+        assert result.device is not None
+        # Verify VIEW_ALL flow was exercised
+        assert call_tracker["select_count"] >= 3
+
+    def test_create_profile_wizard_view_all_then_back(
+        self, profile_manager, monkeypatch, mock_detector_factory
+    ):
+        """Test create profile wizard: View all devices, then back to common devices."""
+        mock_detector_factory("Test App", default_path=Path("/detected/path"))
+
+        call_tracker = {"select_count": 0}
+
+        def mock_select(prompt, choices, **kwargs):
+            call_tracker["select_count"] += 1
+            if "trainer app" in prompt:
+                for choice in choices:
+                    if hasattr(choice, "value") and choice.value == AppType.ZWIFT:
+                        return MockQuestion(AppType.ZWIFT)
+            elif "device to simulate" in prompt:
+                if call_tracker["select_count"] == 2:
+                    # First menu: select "View all devices"
+                    for choice in choices:
+                        if hasattr(choice, "value") and choice.value == (
+                            "VIEW_ALL",
+                            None,
+                        ):
+                            return MockQuestion(("VIEW_ALL", None))
+                elif call_tracker["select_count"] == 3:
+                    # All devices menu: select "Back to common devices"
+                    # This triggers lines 1855-1858 (BACK case)
+                    for choice in choices:
+                        if hasattr(choice, "value") and choice.value == ("BACK", None):
+                            return MockQuestion(("BACK", None))
+                elif call_tracker["select_count"] == 4:
+                    # Back to common devices: select a device
+                    for choice in choices:
+                        if hasattr(choice, "value"):
+                            name, device_id = choice.value
+                            if isinstance(device_id, int) and device_id > 0:
+                                return MockQuestion((name, device_id))
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Use this directory" in prompt:
+                return MockQuestion(True)
+            elif "Customize device" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(
+            questionary, "text", lambda *a, **k: MockQuestion("user@example.com")
+        )
+        monkeypatch.setattr(
+            questionary, "password", lambda *a, **k: MockQuestion("pass")
+        )
+
+        result = profile_manager.create_profile_wizard()
+
+        assert result is not None
+        # Verify the flow went through VIEW_ALL → BACK → select device
+        assert call_tracker["select_count"] >= 4
+
+    def test_edit_profile_wizard_view_all_devices(
+        self, two_profile_manager, monkeypatch, capsys
+    ):
+        """Test edit profile wizard with 'View all devices' flow."""
+        call_tracker = {"select_count": 0}
+
+        def mock_select(prompt, choices, **kwargs):
+            call_tracker["select_count"] += 1
+            if "Select profile to edit" in prompt:
+                return MockQuestion("profile1")
+            elif "device to simulate" in prompt:
+                if call_tracker["select_count"] == 2:
+                    # First device menu: select "View all devices"
+                    for choice in choices:
+                        if hasattr(choice, "value") and choice.value == (
+                            "VIEW_ALL",
+                            None,
+                        ):
+                            return MockQuestion(("VIEW_ALL", None))
+                elif call_tracker["select_count"] == 3:
+                    # All devices menu: select a device
+                    # This triggers lines 2096-2128 (category grouping in edit_profile_wizard)
+                    for choice in choices:
+                        if hasattr(choice, "value"):
+                            if (
+                                isinstance(choice.value, tuple)
+                                and len(choice.value) == 2
+                            ):
+                                name, device_id = choice.value
+                                if isinstance(device_id, int) and device_id > 0:
+                                    return MockQuestion((name, device_id))
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit device simulation" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", lambda *a, **k: MockQuestion(""))
+        monkeypatch.setattr(questionary, "password", lambda *a, **k: MockQuestion(""))
+        monkeypatch.setattr(questionary, "path", lambda *a, **k: MockQuestion(""))
+
+        two_profile_manager.edit_profile_wizard()
+
+        # Verify device was updated
+        profile = two_profile_manager.get_profile("profile1")
+        assert profile.device is not None
+        assert call_tracker["select_count"] >= 3
+
+    def test_edit_profile_wizard_view_all_then_back(
+        self, two_profile_manager, monkeypatch
+    ):
+        """Test edit profile wizard: View all devices, then back to common devices."""
+        call_tracker = {"select_count": 0}
+
+        def mock_select(prompt, choices, **kwargs):
+            call_tracker["select_count"] += 1
+            if "Select profile to edit" in prompt:
+                return MockQuestion("profile1")
+            elif "device to simulate" in prompt:
+                if call_tracker["select_count"] == 2:
+                    # First menu: select "View all devices"
+                    for choice in choices:
+                        if hasattr(choice, "value") and choice.value == (
+                            "VIEW_ALL",
+                            None,
+                        ):
+                            return MockQuestion(("VIEW_ALL", None))
+                elif call_tracker["select_count"] == 3:
+                    # All devices menu: select "Back to common devices"
+                    # This triggers lines 2153-2156 (BACK case in edit_profile_wizard)
+                    for choice in choices:
+                        if hasattr(choice, "value") and choice.value == ("BACK", None):
+                            return MockQuestion(("BACK", None))
+                elif call_tracker["select_count"] == 4:
+                    # Back to common devices: select a device
+                    for choice in choices:
+                        if hasattr(choice, "value"):
+                            name, device_id = choice.value
+                            if isinstance(device_id, int) and device_id > 0:
+                                return MockQuestion((name, device_id))
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit device simulation" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", lambda *a, **k: MockQuestion(""))
+        monkeypatch.setattr(questionary, "password", lambda *a, **k: MockQuestion(""))
+        monkeypatch.setattr(questionary, "path", lambda *a, **k: MockQuestion(""))
+
+        two_profile_manager.edit_profile_wizard()
+
+        # Verify the flow went through VIEW_ALL → BACK → select device
+        profile = two_profile_manager.get_profile("profile1")
+        assert profile.device is not None
+        assert call_tracker["select_count"] >= 4
+
+    def test_edit_profile_wizard_cancel_device_selection_after_view_all(
+        self, two_profile_manager, monkeypatch
+    ):
+        """Test edit profile wizard: cancel device selection after viewing all devices."""
+        call_tracker = {"select_count": 0}
+
+        def mock_select(prompt, choices, **kwargs):
+            call_tracker["select_count"] += 1
+            if "Select profile to edit" in prompt:
+                return MockQuestion("profile1")
+            elif "device to simulate" in prompt:
+                if call_tracker["select_count"] == 2:
+                    # First menu: select "View all devices"
+                    for choice in choices:
+                        if hasattr(choice, "value") and choice.value == (
+                            "VIEW_ALL",
+                            None,
+                        ):
+                            return MockQuestion(("VIEW_ALL", None))
+                elif call_tracker["select_count"] == 3:
+                    # All devices menu: cancel (return None)
+                    # This triggers lines 2139-2141 (cancel handling)
+                    return MockQuestion(None)
+            return MockQuestion(choices[0])
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit device simulation" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+        monkeypatch.setattr(questionary, "text", lambda *a, **k: MockQuestion(""))
+        monkeypatch.setattr(questionary, "password", lambda *a, **k: MockQuestion(""))
+        monkeypatch.setattr(questionary, "path", lambda *a, **k: MockQuestion(""))
+
+        two_profile_manager.edit_profile_wizard()
+
+        # Verify the cancellation flow was exercised (VIEW_ALL → cancel)
+        assert call_tracker["select_count"] >= 3
+
     def test_edit_profile_wizard_with_device_customization(
         self, manager_with_profiles, monkeypatch, capsys
     ):
@@ -3065,67 +3329,25 @@ class TestDeviceConfiguration:
 class TestSerialNumbers:
     """Tests for serial number functionality."""
 
-    def test_profile_validate_serial_number_none(self):
-        """Test validate_serial_number returns False for None."""
-        profile = Profile(
-            name="test",
-            app_type=AppType.ZWIFT,
-            garmin_username="user@example.com",
-            garmin_password="secret",
-            fitfiles_path=Path("/path"),
+    @pytest.mark.parametrize(
+        "serial_number,expected_valid,test_description",
+        [
+            (None, False, "None serial number"),
+            ("1234567890", False, "non-integer (string)"),
+            (1234567890, True, "valid serial number"),
+            (999_999_999, False, "too small (< 1 billion)"),
+            (4_294_967_296, False, "too large (> max uint32)"),
+        ],
+    )
+    def test_profile_validate_serial_number(
+        self, serial_number, expected_valid, test_description, standard_profile
+    ):
+        """Test validate_serial_number with various inputs."""
+        # Use the standard_profile fixture and override serial_number
+        standard_profile.serial_number = serial_number  # type: ignore
+        assert standard_profile.validate_serial_number() == expected_valid, (
+            f"Failed for {test_description}"
         )
-        # Set serial_number to None explicitly
-        profile.serial_number = None
-        assert profile.validate_serial_number() is False
-
-    def test_profile_validate_serial_number_non_integer(self):
-        """Test validate_serial_number returns False for non-integer."""
-        profile = Profile(
-            name="test",
-            app_type=AppType.ZWIFT,
-            garmin_username="user@example.com",
-            garmin_password="secret",
-            fitfiles_path=Path("/path"),
-        )
-        # Set serial_number to a string (shouldn't happen in practice)
-        profile.serial_number = "1234567890"  # type: ignore
-        assert profile.validate_serial_number() is False
-
-    def test_profile_validate_serial_number_valid(self):
-        """Test validate_serial_number returns True for valid values."""
-        profile = Profile(
-            name="test",
-            app_type=AppType.ZWIFT,
-            garmin_username="user@example.com",
-            garmin_password="secret",
-            fitfiles_path=Path("/path"),
-            serial_number=1234567890,
-        )
-        assert profile.validate_serial_number() is True
-
-    def test_profile_validate_serial_number_out_of_range_low(self):
-        """Test validate_serial_number returns False for too small values."""
-        profile = Profile(
-            name="test",
-            app_type=AppType.ZWIFT,
-            garmin_username="user@example.com",
-            garmin_password="secret",
-            fitfiles_path=Path("/path"),
-            serial_number=999_999_999,
-        )
-        assert profile.validate_serial_number() is False
-
-    def test_profile_validate_serial_number_out_of_range_high(self):
-        """Test validate_serial_number returns False for too large values."""
-        profile = Profile(
-            name="test",
-            app_type=AppType.ZWIFT,
-            garmin_username="user@example.com",
-            garmin_password="secret",
-            fitfiles_path=Path("/path"),
-            serial_number=4_294_967_296,
-        )
-        assert profile.validate_serial_number() is False
 
     def test_config_migration_adds_serial_numbers(self, tmp_path, monkeypatch):
         """Test that config migration adds serial numbers to profiles without them."""
