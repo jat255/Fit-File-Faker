@@ -1735,6 +1735,7 @@ class ProfileManager:
             # Two-level menu: common devices first, then "View all devices" option
             show_all = False
             device_selected = False
+            selected_device_name = None
 
             while not device_selected:
                 # Get list of supported devices (common or all based on show_all flag)
@@ -1756,7 +1757,9 @@ class ProfileManager:
                     ]
                     for name, device_id, desc in bike_computers:
                         device_choices.append(
-                            questionary.Choice(f"{name} - {desc}", (name, device_id))
+                            questionary.Choice(
+                                f"{name} ({device_id})", (name, device_id)
+                            )
                         )
 
                     # Add separator
@@ -1776,7 +1779,9 @@ class ProfileManager:
                     ]
                     for name, device_id, desc in watches:
                         device_choices.append(
-                            questionary.Choice(f"{name} - {desc}", (name, device_id))
+                            questionary.Choice(
+                                f"{name} ({device_id})", (name, device_id)
+                            )
                         )
 
                     # Add separator and special options
@@ -1808,9 +1813,7 @@ class ProfileManager:
                         if category not in categories:
                             categories[category] = []
 
-                        display = (
-                            f"{name} ({device_id})" if not desc else f"{name} - {desc}"
-                        )
+                        display = f"{name} ({device_id})"
                         categories[category].append((display, (name, device_id)))
 
                     # Add devices by category
@@ -1887,6 +1890,7 @@ class ProfileManager:
                 else:
                     # Device selected
                     device = device_id
+                    selected_device_name = device_name
                     device_selected = True
 
             # Look up software_version from supplemental registry
@@ -1942,8 +1946,13 @@ class ProfileManager:
             serial_number = random.randint(1_000_000_000, 4_294_967_295)
 
         # Display final device configuration before profile creation
-        device_name = "Edge 830" if device is None else f"Device {device}"
-        console.print(f"\n[cyan]Device:[/cyan] [yellow]{device_name}[/yellow]")
+        if device is None:
+            device_display = '"Edge 830" (3122)'
+        elif selected_device_name:
+            device_display = f'"{selected_device_name}" ({device})'
+        else:
+            device_display = f"Device {device}"
+        console.print(f"\n[cyan]Device:[/cyan] [yellow]{device_display}[/yellow]")
         console.print(f"[cyan]Serial Number:[/cyan] [yellow]{serial_number}[/yellow]")
         console.print(
             "[dim](You can change these later via the edit profile menu)[/dim]"
@@ -2053,7 +2062,9 @@ class ProfileManager:
                     ]
                     for name, device_id, desc in bike_computers:
                         device_choices.append(
-                            questionary.Choice(f"{name} - {desc}", (name, device_id))
+                            questionary.Choice(
+                                f"{name} ({device_id})", (name, device_id)
+                            )
                         )
 
                     # Add separator
@@ -2073,7 +2084,9 @@ class ProfileManager:
                     ]
                     for name, device_id, desc in watches:
                         device_choices.append(
-                            questionary.Choice(f"{name} - {desc}", (name, device_id))
+                            questionary.Choice(
+                                f"{name} ({device_id})", (name, device_id)
+                            )
                         )
 
                     # Add separator and special options
@@ -2105,9 +2118,7 @@ class ProfileManager:
                         if category not in categories:
                             categories[category] = []
 
-                        display = (
-                            f"{name} ({device_id})" if not desc else f"{name} - {desc}"
-                        )
+                        display = f"{name} ({device_id})"
                         categories[category].append((display, (name, device_id)))
 
                     # Add devices by category

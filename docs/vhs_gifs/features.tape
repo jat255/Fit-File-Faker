@@ -3,7 +3,7 @@
 # This demo showcases the CLI features of fit-file-faker
 # without complex interactive navigation.
 #
-# To generate the GIF, run: vhs features.tape
+# To generate the MP4, run: vhs features.tape
 # Output:
 #   Output <path>.gif               Create a GIF output at the given <path>
 #   Output <path>.mp4               Create an MP4 output at the given <path>
@@ -59,14 +59,14 @@
 #   Hide                            Hide the subsequent commands from the output
 #   Show                            Show the subsequent commands in the output
 
-Output features.gif
+Output features.mp4
 
 Require uv
 
 Set Shell "bash"
 Set FontSize 15
 Set Width 1200
-Set Height 600
+Set Height 800
 Set Theme "Dracula"
 Set TypingSpeed 30ms
 Set PlaybackSpeed 1.0
