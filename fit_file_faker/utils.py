@@ -15,6 +15,49 @@ from fit_file_faker.vendor.fit_tool.field import Field
 
 _logger = logging.getLogger("garmin")
 _original_get_length_from_size = Field.get_length_from_size
+_original_read_strings_from_bytes = Field.read_strings_from_bytes
+
+
+def _lenient_read_strings_from_bytes(self, bytes_buffer: bytes):
+    """Lenient string decoder that handles non-UTF-8 encoded strings.
+
+    This is a replacement for `fit_tool`'s `Field.read_strings_from_bytes` that
+    handles FIT files with non-UTF-8 encoded strings more gracefully. Some devices
+    use Windows-1252, Latin-1, or other encodings instead of UTF-8.
+
+    The function tries multiple decoding strategies:
+    1. UTF-8 (standard)
+    2. Latin-1 / ISO-8859-1 (fallback)
+    3. Replace invalid bytes with � (last resort)
+
+    Args:
+        bytes_buffer: Raw bytes containing null-terminated strings.
+
+    Note:
+        When non-UTF-8 encoding is detected, a debug message is logged.
+        This allows processing to continue even with malformed string data.
+    """
+    # Try UTF-8 first (standard FIT specification)
+    try:
+        string_container = bytes_buffer.decode("utf-8")
+    except UnicodeDecodeError:
+        # Try Latin-1 (ISO-8859-1) which accepts all byte values
+        # This is common for devices that don't properly encode UTF-8
+        try:
+            _logger.debug("Failed to decode string as UTF-8, trying Latin-1 encoding")
+            string_container = bytes_buffer.decode("latin-1")
+        except Exception:
+            # Last resort: replace invalid bytes
+            _logger.warning(
+                "Failed to decode string with UTF-8 and Latin-1, using replacement characters"
+            )
+            string_container = bytes_buffer.decode("utf-8", errors="replace")
+
+    strings = string_container.split("\u0000")
+    strings = strings[:-1]
+    strings = [x for x in strings if x]
+    self.encoded_values = []
+    self.encoded_values.extend(strings)
 
 
 def _lenient_get_length_from_size(base_type: "BaseType", size: int) -> int:
@@ -71,6 +114,9 @@ def apply_fit_tool_patch():
     version that truncates field lengths instead of raising exceptions when
     field sizes aren't exact multiples of their base type size.
 
+    Also replaces `Field.read_strings_from_bytes` to handle non-UTF-8 encoded
+    strings gracefully by falling back to Latin-1 or replacement characters.
+
     This patch is essential for processing FIT files from manufacturers like
     COROS that don't strictly follow the FIT specification. Without it,
     fit_tool would raise exceptions and refuse to process these files.
@@ -90,6 +136,7 @@ def apply_fit_tool_patch():
         >>> # Now fit_tool can handle COROS files without errors
     """
     Field.get_length_from_size = staticmethod(_lenient_get_length_from_size)
+    Field.read_strings_from_bytes = _lenient_read_strings_from_bytes
 
 
 def fit_crc_get16(crc: int, byte: int) -> int:

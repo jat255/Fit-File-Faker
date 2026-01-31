@@ -101,6 +101,18 @@ def coros_fit_file(test_files_dir):
 
 
 @pytest.fixture(scope="module")
+def zwift_non_utf8_fit_file(test_files_dir):
+    """
+    Return path to Zwift test FIT file with non-UTF-8 encoded strings.
+
+    This file contains string fields encoded with Windows-1252/Latin-1
+    instead of UTF-8, which was causing UnicodeDecodeError before the
+    lenient string decoding patch was added.
+    """
+    return test_files_dir / "zwift_non_utf8_20260130.fit"
+
+
+@pytest.fixture(scope="module")
 def all_test_fit_files(
     tpv_fit_file, zwift_fit_file, mywhoosh_fit_file, karoo_fit_file, coros_fit_file
 ):
@@ -169,6 +181,16 @@ def karoo_fit_parsed(karoo_fit_file):
 def coros_fit_parsed(coros_fit_file):
     """Return parsed COROS FIT file."""
     return FitFile.from_file(str(coros_fit_file))
+
+
+@pytest.fixture
+def zwift_non_utf8_fit_parsed(zwift_non_utf8_fit_file):
+    """
+    Return parsed Zwift FIT file with non-UTF-8 encoded strings.
+
+    This file requires the lenient string decoding patch to parse correctly.
+    """
+    return FitFile.from_file(str(zwift_non_utf8_fit_file))
 
 
 @pytest.fixture

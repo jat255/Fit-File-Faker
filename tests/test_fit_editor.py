@@ -78,12 +78,16 @@ class TestFitEditor:
             ("mywhoosh_fit_parsed", "mywhoosh_modified.fit"),
             ("karoo_fit_parsed", "karoo_modified.fit"),
             ("coros_fit_parsed", "coros_modified.fit"),
+            ("zwift_non_utf8_fit_parsed", "zwift_non_utf8_modified.fit"),
         ],
     )
     def test_edit_fit_files(
         self, fit_editor, fit_file_fixture, output_name, temp_dir, request
     ):
-        """Test editing FIT files from various platforms (TPV, Zwift, MyWhoosh, Karoo, COROS)."""
+        """Test editing FIT files from various platforms (TPV, Zwift, MyWhoosh, Karoo, COROS).
+
+        Includes test for Zwift file with non-UTF-8 encoded strings.
+        """
         # Get the fixture value using request.getfixturevalue
         fit_file_parsed = request.getfixturevalue(fit_file_fixture)
         output_file = temp_dir / output_name
