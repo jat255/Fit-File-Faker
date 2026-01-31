@@ -36,7 +36,7 @@ Quick references:
 ## ⚡ Quick Start
 
 <div align="center">
-  <img src="docs/vhs_gifs/features.gif" alt="FIT File Faker Features Demo" width="800" />
+  <img src="https://raw.githubusercontent.com/jat255/Fit-File-Faker/main/docs/vhs_gifs/features.gif" alt="FIT File Faker Features Demo" width="800" />
 </div>
 
 ### Install
@@ -58,7 +58,7 @@ fit-file-faker --config-menu
 ```
 
 <div align="center">
-  <img src="docs/vhs_gifs/config_new.gif" alt="Creating a new profile" width="800" />
+  <img src="https://raw.githubusercontent.com/jat255/Fit-File-Faker/main/docs/vhs_gifs/config_new.gif" alt="Creating a new profile" width="800" />
   <p><em>Creating a new profile with the interactive menu</em></p>
 </div>
 
@@ -98,7 +98,7 @@ fit-file-faker --profile zwift -m
 ```
 
 <div align="center">
-  <img src="docs/vhs_gifs/config_edit.gif" alt="Editing a profile" width="800" />
+  <img src="https://raw.githubusercontent.com/jat255/Fit-File-Faker/main/docs/vhs_gifs/config_edit.gif" alt="Editing a profile" width="800" />
   <p><em>Editing an existing profile configuration</em></p>
 </div>
 
