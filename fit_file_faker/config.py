@@ -1913,6 +1913,12 @@ class ProfileManager:
             manufacturer = Manufacturer.GARMIN.value
 
             # Ask about serial number customization
+            console.print(
+                "\n[yellow]⚠️  Important:[/yellow] For full Garmin Connect features (Training Effect, "
+                "challenges, badges),\n"
+                "   the serial number should match your actual Garmin device.\n"
+                "   Random serial numbers may cause activities to not count properly.\n"
+            )
             customize_serial = questionary.confirm(
                 "Customize serial number for this device?", default=False
             ).ask()
@@ -1923,8 +1929,9 @@ class ProfileManager:
                     "\n[dim]To find your device's serial number (Unit ID):[/dim]"
                 )
                 console.print(
-                    "[dim]  Garmin Edge: System → About → Copyright Info → Unit ID[/dim]\n"
+                    "[dim]  On device: Settings → About → Copyright Info → Unit ID[/dim]"
                 )
+                console.print("[dim]  On Garmin Connect: Device settings page[/dim]\n")
 
                 serial_input = questionary.text(
                     "Enter 10-digit serial number:",
@@ -2225,6 +2232,12 @@ class ProfileManager:
                 new_manufacturer = Manufacturer.GARMIN.value
 
             # Ask about serial number editing
+            console.print(
+                "\n[yellow]⚠️  Important:[/yellow] For full Garmin Connect features (Training Effect, "
+                "challenges, badges),\n"
+                "   the serial number should match your actual Garmin device.\n"
+                "   Random serial numbers may cause activities to not count properly.\n"
+            )
             edit_serial = questionary.confirm(
                 f"Edit serial number? (current: {current_serial})", default=False
             ).ask()
@@ -2234,8 +2247,10 @@ class ProfileManager:
                 serial_choice = questionary.select(
                     "How would you like to set the serial number?",
                     choices=[
+                        questionary.Choice(
+                            "Enter custom serial number (recommended)", "custom"
+                        ),
                         questionary.Choice("Generate random serial number", "random"),
-                        questionary.Choice("Enter custom serial number", "custom"),
                     ],
                 ).ask()
 
@@ -2246,13 +2261,19 @@ class ProfileManager:
                     console.print(
                         f"\n[green]Generated new serial number: {new_serial}[/green]"
                     )
+                    console.print(
+                        "[yellow]Note: Random serial numbers may not work properly with Garmin Connect features.[/yellow]"
+                    )
                 elif serial_choice == "custom":
                     # Show instructions for finding device serial number
                     console.print(
                         "\n[dim]To find your device's serial number (Unit ID):[/dim]"
                     )
                     console.print(
-                        "[dim]  Garmin Edge: System → About → Copyright Info → Unit ID[/dim]\n"
+                        "[dim]  On device: Settings → About → Copyright Info → Unit ID[/dim]"
+                    )
+                    console.print(
+                        "[dim]  On Garmin Connect: Device settings page[/dim]\n"
                     )
 
                     serial_input = questionary.text(

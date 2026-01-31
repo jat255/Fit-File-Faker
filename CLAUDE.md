@@ -220,6 +220,7 @@ The tool emulates Garmin devices by rewriting manufacturer and product IDs in FI
 - Product: 3122 (EDGE_830)
 - Software version: 975 (v9.75 in FIT format)
 - Hardware version: 255
+- Serial number: Auto-generated random 10-digit number (1,000,000,000 to 4,294,967,295)
 
 **Supported devices**: 70+ devices from supplemental registry and fit_tool library, including:
 - Modern bike computers (Edge 1050, 1040, 840, 540, etc.)
@@ -228,6 +229,19 @@ The tool emulates Garmin devices by rewriting manufacturer and product IDs in FI
 - Training apps (Tacx Training App variants)
 
 **Custom device IDs**: Users can enter any numeric device ID manually during profile configuration.
+
+**CRITICAL: Serial Numbers and Garmin Connect Recognition**
+
+For Garmin Connect to correctly recognize an activity as coming from a specific device (affecting Training Effect, Training Status, challenges, badges, etc.), **both the device product ID and serial number must match a valid Garmin device**. The mapping of serial number ranges to device models is proprietary Garmin information and not publicly documented.
+
+**Serial Number Behavior**:
+- **Auto-generated (default)**: Random 10-digit integer - may not be recognized as valid by Garmin Connect
+- **User-provided (recommended)**: Users can enter their actual Garmin device's serial number during profile setup
+  - Find in device: Settings → About → Copyright Info → Unit ID
+  - Find in Garmin Connect: Device settings page
+  - Serial number MUST match the selected device model for proper Garmin Connect recognition
+
+**Implementation**: Serial numbers are stored in the `Profile.serial_number` field, validated as uint32z format (1B to 4.3B), and written to FIT file DeviceInfoMessage records.
 
 **Firmware version maintenance**: Versions sourced from gpsinformation.net can be updated via extraction scripts:
 - `./extract_firmware_versions.sh` - Fetches latest firmware data from gpsinformation.net

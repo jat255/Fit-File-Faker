@@ -121,6 +121,61 @@ fit-file-faker --profile zwift -ua    # Upload Zwift files to personal account
 
 See the [profiles guide](https://jat255.github.io/Fit-File-Faker/profiles/) for comprehensive multi-profile documentation.
 
+## ⚠️ Important: Device Serial Numbers
+
+For Garmin Connect to correctly recognize an activity as coming from a specific device (which affects Training Status, challenges, badges, and other features), **both the device ID and serial number must match a valid Garmin device**.
+
+### Why This Matters
+
+Garmin Connect uses internal validation to ensure that:
+- The device product ID (e.g., Edge 1050, Fenix 8) is legitimate
+- The serial number is valid for that specific device type
+- The combination of device ID + serial number represents a real device
+
+If the serial number doesn't match the device type, Garmin Connect may:
+- Not apply Training Effect calculations correctly
+- Not count the activity toward challenges or badges
+- Not update Training Status or training load metrics
+- Display the activity with incorrect device information
+
+### Recommendations
+
+**Option 1: Use Your Real Garmin Device Serial Number (Recommended)**
+
+If you own a Garmin device and want your activities to count properly for all Garmin Connect features:
+
+1. Find your device's serial number (Unit ID):
+   - On the device: Settings → About → Copyright Info → Unit ID
+   - On Garmin Connect: Device settings page
+   - On the device packaging or receipt
+2. During profile setup, choose to customize the serial number
+3. Enter your actual device's serial number
+4. Select the matching device model (e.g., if you have an Edge 830, select Edge 830)
+
+**Option 2: Accept Limited Functionality**
+
+If you don't own a Garmin device or don't need full Garmin Connect integration:
+
+- The tool will generate a random serial number automatically
+- Activities will upload successfully to Garmin Connect
+- Basic activity data (distance, time, power, heart rate) will display correctly
+- However, advanced features may not work as expected
+
+### What We Don't Know
+
+The mapping of serial number ranges to specific device models is proprietary Garmin information and not publicly documented. This means:
+- We cannot automatically generate valid serial numbers for specific devices
+- Random serial numbers may or may not be accepted by Garmin Connect
+- The only guaranteed way to ensure full functionality is to use a real device's serial number
+
+### Finding Your Serial Number
+
+When you customize the serial number during profile creation, the tool will show you where to find it:
+```bash
+fit-file-faker --config-menu
+# Select "Create new profile" → customize device → customize serial number
+```
+
 ## 🤝 Contributing
 
 Contributions are welcome! Here's how to get started:
