@@ -223,54 +223,79 @@ If you select **Yes**, you can:
 
 1. **Choose from common devices** - Curated list of 11 popular devices
 2. **View all devices** - Access full catalog of 70+ devices organized by category
-3. **Enter a custom numeric device ID** (advanced users) - Allows you to specify a custom "device id" in the resulting FIT file; most users should not want this option, but it is available if you wish
+3. **Enter a custom numeric device ID** - Allows you to specify a custom "device id" in the resulting FIT file; this can allow you to match your FIT files to a real Garmin device that you may already have on your account 
+4. **Enter a custom serial number/Unit ID** - Allows you to specify the unique device that the FIT file will appear to have been written by. This is important for enabling certain features on Garmin Connect (see next section). 
 
 !!! tip "Custom Device IDs"
     If you enter a numeric device ID that's not in the registry, the tool will show a warning but still create/update the profile. This allows using newer Garmin devices or less common models.
+    
+### ⚠️ Important: Device Serial Numbers/Unit IDs
 
-### Example: Different Devices for Different Profiles
+For Garmin Connect to correctly recognize an activity as coming from a specific device (which affects Training Status, challenges, badges, and other features), **both the device ID and serial number (Unit ID) must match a valid Garmin device**. This is a bit confusing on Garmin's implementation, since they call the value "serial number" in the FIT file, but it actually needs to be your device's *Unit ID*, not the *serial number*. To find the Unit ID, you can look either on your device (may vary depending on your device) or in the Garmin Connect app:
 
-```json
-{
-  "profiles": [
-    {
-      "name": "tpv",
-      "app_type": "tp_virtual",
-      "garmin_username": "user@example.com",
-      "garmin_password": "secret",
-      "fitfiles_path": "/path/to/tpv",
-      "manufacturer": 1,
-      "device": 3122,  // Edge 830 (default)
-      "serial_number": 1234567890,
-      "software_version": 975
-    },
-    {
-      "name": "zwift",
-      "app_type": "zwift",
-      "garmin_username": "user@example.com",
-      "garmin_password": "secret",
-      "fitfiles_path": "/path/to/zwift",
-      "manufacturer": 1,
-      "device": 2713,  // Edge 1030
-      "serial_number": 2362467083,
-      "software_version": 2922
-    }
-  ]
-}
-```
+#### Garmin Connect app
 
-### Why Customize Device Simulation?
+<div align="center">
+  <img src="assets/unit_id_android.png" alt="Finding Unit ID on Garmin Connect" width="200" />
+  <p><em>Finding your device's Unit ID in the Garmin Connect Android app</em></p>
+  <p><em>Go to "Devices → [Your Device] → System → About"</em> to see the Unit ID</p>
+</div>
 
-- **Match your actual device**: If you own an Edge 1030, simulate that device (with its serial number) for consistency
-- **Testing**: Try different devices to see how Garmin Connect responds
-- **Feature compatibility**: Some Garmin devices may enable different features in Garmin Connect
+#### On an Edge device
 
-!!! note "Backward Compatibility"
-    Existing profiles without device settings automatically default to Edge 830, maintaining the original behavior prior to v2.1.0.
+<div align="center">
+  <img src="assets/unit_id_edge_1040.jpg" alt="Finding Unit ID on Garmin Device" width="500" />
+  <p><em>Finding your device's Unit ID on an Edge 1040 device</em></p>
+  <p><em>Go to "Menu → System → About → Copyright Info"</em> to see the Unit ID</p>
+</div>
+
+#### Why This Matters
+
+Garmin Connect uses server-side validation to ensure that (so far as we know):
+
+- The device product ID (e.g., Edge 1050, Fenix 8) is legitimate
+- The Unit ID is valid for that specific device type
+- The combination of device ID + Unit ID represents a real device
+
+If the Unit ID doesn't match the device type, Garmin Connect may:
+
+- Not apply Training Effect calculations correctly
+- Not count the activity toward challenges or badges
+- Not update Training Status or training load metrics
+- Display the activity with incorrect device information
+
+#### Recommendations
+
+**Option 1: Use Your Real Garmin Device Unit ID (Recommended)**
+
+If you own a Garmin device and want your activities to count properly for all Garmin Connect features:
+
+1. Find your device's Unit ID:
+     - On the device: Settings → About → Copyright Info → Unit ID
+     - On Garmin Connect: Device settings page
+     - On the device packaging or receipt
+2. During profile setup, choose to customize the serial number
+3. Enter your actual device's Unit ID as the serial number
+4. Select the matching device model (e.g., if you have an Edge 830, select Edge 830)
+
+**Option 2: Accept Limited Functionality**
+
+If you don't own a Garmin device or don't need full Garmin Connect integration:
+
+- The tool will generate a random serial number automatically
+- Activities will upload successfully to Garmin Connect
+- Basic activity data (distance, time, power, heart rate) will display correctly
+- However, advanced features may not work as expected
+
+#### What We Don't Know
+
+The mapping of Unit ID ranges to specific device models is proprietary Garmin information and not publicly documented. This means:
+
+- We cannot automatically generate valid Unit IDs/serial numbers for specific devices
+- Random Unit IDs/serial numbers may or may not be accepted by Garmin Connect
+- The only guaranteed way to ensure full functionality is to use a real device's Unit ID
 
 ## Usage
-
-
 
 ### Command-line Options
 

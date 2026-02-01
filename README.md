@@ -121,18 +121,34 @@ fit-file-faker --profile zwift -ua    # Upload Zwift files to personal account
 
 See the [profiles guide](https://jat255.github.io/Fit-File-Faker/profiles/) for comprehensive multi-profile documentation.
 
-## ⚠️ Important: Device Serial Numbers
+## ⚠️ Important: Device Serial Numbers/Unit IDs
 
-For Garmin Connect to correctly recognize an activity as coming from a specific device (which affects Training Status, challenges, badges, and other features), **both the device ID and serial number must match a valid Garmin device**.
+For Garmin Connect to correctly recognize an activity as coming from a specific device (which affects Training Status, challenges, badges, and other features), **both the device ID and serial number (Unit ID) must match a valid Garmin device**. This is a bit confusing on Garmin's implementation, since they call the value "serial number" in the FIT file, but it actually needs to be your device's *Unit ID*, not the *serial number*. To find the Unit ID, you can look either on your device (may vary depending on your device) or in the Garmin Connect app:
+
+### Garmin Connect app
+
+<div align="center">
+  <img src="docs/assets/unit_id_android.png" alt="Finding Unit ID on Garmin Connect" width="200" />
+  <p><em>Finding your device's Unit ID in the Garmin Connect Android app</em></p>
+  <p><em>Go to "Devices → [Your Device] → System → About"</em> to see the Unit ID</p>
+</div>
+
+### On an Edge device
+
+<div align="center">
+  <img src="docs/assets/unit_id_edge_1040.jpg" alt="Finding Unit ID on Garmin Device" width="500" />
+  <p><em>Finding your device's Unit ID on an Edge 1040 device</em></p>
+  <p><em>Go to "Menu → System → About → Copyright Info"</em> to see the Unit ID</p>
+</div>
 
 ### Why This Matters
 
-Garmin Connect uses internal validation to ensure that:
+Garmin Connect uses server-side validation to ensure that (so far as we know):
 - The device product ID (e.g., Edge 1050, Fenix 8) is legitimate
-- The serial number is valid for that specific device type
-- The combination of device ID + serial number represents a real device
+- The Unit ID is valid for that specific device type
+- The combination of device ID + Unit ID represents a real device
 
-If the serial number doesn't match the device type, Garmin Connect may:
+If the Unit ID doesn't match the device type, Garmin Connect may:
 - Not apply Training Effect calculations correctly
 - Not count the activity toward challenges or badges
 - Not update Training Status or training load metrics
@@ -140,16 +156,16 @@ If the serial number doesn't match the device type, Garmin Connect may:
 
 ### Recommendations
 
-**Option 1: Use Your Real Garmin Device Serial Number (Recommended)**
+**Option 1: Use Your Real Garmin Device Unit ID (Recommended)**
 
 If you own a Garmin device and want your activities to count properly for all Garmin Connect features:
 
-1. Find your device's serial number (Unit ID):
+1. Find your device's Unit ID:
    - On the device: Settings → About → Copyright Info → Unit ID
    - On Garmin Connect: Device settings page
    - On the device packaging or receipt
 2. During profile setup, choose to customize the serial number
-3. Enter your actual device's serial number
+3. Enter your actual device's Unit ID as the serial number
 4. Select the matching device model (e.g., if you have an Edge 830, select Edge 830)
 
 **Option 2: Accept Limited Functionality**
@@ -163,14 +179,15 @@ If you don't own a Garmin device or don't need full Garmin Connect integration:
 
 ### What We Don't Know
 
-The mapping of serial number ranges to specific device models is proprietary Garmin information and not publicly documented. This means:
-- We cannot automatically generate valid serial numbers for specific devices
-- Random serial numbers may or may not be accepted by Garmin Connect
-- The only guaranteed way to ensure full functionality is to use a real device's serial number
+The mapping of Unit ID ranges to specific device models is proprietary Garmin information and not publicly documented. This means:
+- We cannot automatically generate valid Unit IDs/serial numbers for specific devices
+- Random Unit IDs/serial numbers may or may not be accepted by Garmin Connect
+- The only guaranteed way to ensure full functionality is to use a real device's Unit ID
 
-### Finding Your Serial Number
+### Finding Your Unit ID
 
-When you customize the serial number during profile creation, the tool will show you where to find it:
+When you customize the serial number/Unit ID during profile creation, the tool will show you where to find it:
+
 ```bash
 fit-file-faker --config-menu
 # Select "Create new profile" → customize device → customize serial number

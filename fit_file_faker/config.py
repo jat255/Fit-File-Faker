@@ -632,7 +632,7 @@ class Profile:
         fitfiles_path: Path to directory containing FIT files to process
         manufacturer: Manufacturer ID to use for device simulation (defaults to Garmin)
         device: Device/product ID to use for device simulation (defaults to Edge 830)
-        serial_number: Device serial number (auto-generated if not specified)
+        serial_number: Device serial number (should be the device's Unit ID; auto-generated if not specified)
         software_version: Firmware version in FIT format (e.g., 2922 = v29.22). If None,
             no FileCreatorMessage will be added to FIT files.
 
@@ -680,7 +680,7 @@ class Profile:
         if self.device is None:
             self.device = GarminProduct.EDGE_830.value
 
-        # Generate serial number if not specified
+        # Generate serial number if Unit ID not specified
         if self.serial_number is None:
             import random
 
@@ -1926,12 +1926,15 @@ class ProfileManager:
             if customize_serial:
                 # Show instructions for finding device serial number
                 console.print(
-                    "\n[dim]To find your device's serial number (Unit ID):[/dim]"
+                    '\n[dim]The "serial number" value should be set to your device\'s Unit ID[/dim]'
                 )
+                console.print("\n[dim]To find your device's Unit ID:[/dim]")
                 console.print(
                     "[dim]  On device: Settings → About → Copyright Info → Unit ID[/dim]"
                 )
-                console.print("[dim]  On Garmin Connect: Device settings page[/dim]\n")
+                console.print(
+                    "[dim]  On Garmin Connect (may not work for all devices): Device settings page → System → About[/dim]\n"
+                )
 
                 serial_input = questionary.text(
                     "Enter 10-digit serial number:",
@@ -2235,7 +2238,7 @@ class ProfileManager:
             console.print(
                 "\n[yellow]⚠️  Important:[/yellow] For full Garmin Connect features (Training Effect, "
                 "challenges, badges),\n"
-                "   the serial number should match your actual Garmin device.\n"
+                '   the serial number should match the "Unit ID" of an actual Garmin device.\n'
                 "   Random serial numbers may cause activities to not count properly.\n"
             )
             edit_serial = questionary.confirm(
@@ -2267,13 +2270,14 @@ class ProfileManager:
                 elif serial_choice == "custom":
                     # Show instructions for finding device serial number
                     console.print(
-                        "\n[dim]To find your device's serial number (Unit ID):[/dim]"
+                        '\n[dim]The "serial number" value should be set to your device\'s Unit ID[/dim]'
                     )
+                    console.print("\n[dim]To find your device's Unit ID:[/dim]")
                     console.print(
                         "[dim]  On device: Settings → About → Copyright Info → Unit ID[/dim]"
                     )
                     console.print(
-                        "[dim]  On Garmin Connect: Device settings page[/dim]\n"
+                        "[dim]  On Garmin Connect (may not work for all devices): Device settings page → System → About[/dim]\n"
                     )
 
                     serial_input = questionary.text(

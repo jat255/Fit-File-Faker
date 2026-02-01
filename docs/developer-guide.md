@@ -489,7 +489,7 @@ The tool emulates Garmin devices by rewriting manufacturer and product IDs in FI
 - **Product**: 3122 (`EDGE_830`)
 - **Software version**: 975 (v9.75 in FIT format)
 - **Hardware version**: 255
-- **Serial number**: Auto-generated random 10-digit number
+- **Serial number**: Auto-generated random 10-digit number instead of real Unit ID
 
 **Supported devices**: 70+ devices from the supplemental registry and `fit_tool` library, including:
 
@@ -502,15 +502,15 @@ The tool emulates Garmin devices by rewriting manufacturer and product IDs in FI
 
 #### Serial Numbers and Garmin Connect Recognition
 
-!!! warning "Critical: Device Serial Numbers Must Match Device Type"
-    For Garmin Connect to correctly recognize an activity as coming from a specific device, **both the device product ID and serial number must represent a valid Garmin device**. This affects:
+!!! warning "Critical: Device Serial Numbers Must be a valid *Unit ID* for a given Device Type"
+    For Garmin Connect to correctly recognize an activity as coming from a specific device, **both the device product ID and serial number must represent a valid Garmin device**. The serial number stored in the FIT file must be a valid *Unit ID* for the device. This affects:
 
     - **Training Effect calculations**: VO2 Max, Training Load, Recovery Time
     - **Training Status**: Productive, Maintaining, Peaking, etc.
     - **Challenges and Badges**: Activity may not count toward goals
     - **Device attribution**: Incorrect device shown in activity details
 
-    **The mapping of serial number ranges to device models is proprietary Garmin information** and not publicly documented.
+    **The mapping of serial number/Unit ID ranges to device models is proprietary Garmin information** and not publicly documented.
 
 **Serial Number Behavior**:
 
@@ -519,15 +519,15 @@ The tool emulates Garmin devices by rewriting manufacturer and product IDs in FI
    - Activities will upload but advanced features may not work correctly
 
 2. **User-provided (recommended for full functionality)**: During profile creation/editing, users can:
-   - Enter their actual Garmin device's serial number (Unit ID)
+   - Enter their actual Garmin device's Unit ID as the serial number
    - This ensures full Garmin Connect integration
-   - Serial number must match the selected device model for proper recognition
+   - The Unit ID must match the selected device model for proper recognition
 
 3. **Validation**: The tool validates serial numbers are valid `uint32z` format but **cannot** validate device-specific ranges
 
 **Best Practice**: If users own a Garmin device and want full Garmin Connect features, they should:
 - Configure their profile to use the same device model as their physical device
-- Enter their actual device's serial number (found in Settings → About → Copyright Info → Unit ID)
+- Enter their actual device's Unit ID as the serial number (found in Settings → About → Copyright Info → Unit ID)
 - This guarantees proper activity recognition and feature availability
 
 ### File Naming Convention
