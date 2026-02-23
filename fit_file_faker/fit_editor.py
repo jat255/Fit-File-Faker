@@ -424,8 +424,15 @@ class FitEditor:
 
             try:
                 fit_file = FitFile.from_file(str(fit_path))
-            except Exception:
-                _logger.error("File does not appear to be a FIT file, skipping...")
+            except Exception as e:
+                _logger.error(
+                    f"File does not appear to be a FIT file, skipping...\n"
+                    f"  Error: {e}\n"
+                    f"  If you believe this file is valid, re-run with -v for debug logs and\n"
+                    f"  open an issue at https://github.com/jat255/Fit-File-Faker/issues with\n"
+                    f"  the debug output attached."
+                )
+                _logger.debug("Full traceback:", exc_info=True)
                 return None
         elif isinstance(fit_input, FitFile):
             fit_file = fit_input

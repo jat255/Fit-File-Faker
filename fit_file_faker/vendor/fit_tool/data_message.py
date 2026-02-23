@@ -131,7 +131,9 @@ class DataMessage(Message):
                 field.read_all_from_bytes(field_bytes, endian=self.endian)
                 start += field.size
             else:
-                raise Exception(f'Developer Field ${field.name} is empty')
+                logger.debug(
+                    f'Developer Field ${field.name} is empty, skipping')
+                start += developer_field_definition.size
 
     def to_row(self) -> list:
         row = [self.name]
@@ -194,13 +196,14 @@ class DataMessage(Message):
                 field = self.get_developer_field(field_definition.developer_data_index, field_definition.field_id)
 
                 if field is None:
-                    raise Exception(
-                        f'Developer field for id: {field_definition.developer_data_index}:{field_definition.field_id} not found.')
+                    logger.debug(
+                        f'Developer field for id: {field_definition.developer_data_index}:{field_definition.field_id} not found, skipping.')
+                    continue
 
                 if field.is_valid():
                     bytes_buffer += field.to_bytes(endian=self.endian)
                 else:
-                    raise Exception(f'Developer Field for id: {field_definition.field_id} is not valid.')
+                    logger.debug(f'Developer Field for id: {field_definition.field_id} is not valid, skipping.')
 
         else:
             for field in self.fields:

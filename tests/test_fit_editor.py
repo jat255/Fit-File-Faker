@@ -79,6 +79,7 @@ class TestFitEditor:
             ("karoo_fit_parsed", "karoo_modified.fit"),
             ("coros_fit_parsed", "coros_modified.fit"),
             ("zwift_non_utf8_fit_parsed", "zwift_non_utf8_modified.fit"),
+            ("tpv_dev_fields_fit_parsed", "tpv_dev_fields_modified.fit"),
         ],
     )
     def test_edit_fit_files(
@@ -139,16 +140,27 @@ class TestFitEditor:
         # Check that it's a reasonable date (after 2020)
         assert date.year >= 2020
 
-    def test_invalid_file_handling(self, fit_editor, temp_dir):
-        """Test that non-FIT files are handled gracefully."""
-        # Create a non-FIT file
+    def test_invalid_file_handling(self, fit_editor, temp_dir, caplog):
+        """Test that non-FIT files are handled gracefully with an informative error message."""
+        import logging
+
         invalid_file = temp_dir / "not_a_fit.fit"
         invalid_file.write_text("This is not a FIT file")
 
-        result = fit_editor.edit_fit(invalid_file, output=temp_dir / "output.fit")
+        with caplog.at_level(logging.ERROR, logger="garmin"):
+            result = fit_editor.edit_fit(invalid_file, output=temp_dir / "output.fit")
 
-        # Should return None for invalid files
         assert result is None
+
+        error_messages = [
+            r.message for r in caplog.records if r.levelno == logging.ERROR
+        ]
+        assert len(error_messages) == 1
+        msg = error_messages[0]
+        assert "does not appear to be a FIT file" in msg
+        assert "Error:" in msg
+        assert "-v" in msg
+        assert "https://github.com/jat255/Fit-File-Faker/issues" in msg
 
     def test_should_modify_manufacturer(self, fit_editor):
         """Test the manufacturer modification logic."""
@@ -212,6 +224,63 @@ class TestFitEditor:
 
         # Verify file still has records
         assert len(fit_file.records) > 0
+
+
+class TestDeveloperFields:
+    """Tests for FIT files containing developer-defined fields."""
+
+    def test_parse_file_with_empty_developer_fields(self, tpv_dev_fields_fit_file):
+        """Test that a FIT file with empty developer fields can be parsed without error."""
+        from fit_file_faker.vendor.fit_tool.fit_file import FitFile
+
+        fit_file = FitFile.from_file(str(tpv_dev_fields_fit_file))
+        assert fit_file is not None
+        assert len(fit_file.records) > 0
+
+    def test_developer_field_file_is_tpv(self, tpv_dev_fields_fit_file):
+        """Test that the developer fields file is recognized as a TrainingPeaks Virtual file."""
+        from fit_file_faker.vendor.fit_tool.fit_file import FitFile
+        from fit_file_faker.vendor.fit_tool.profile.messages.file_id_message import (
+            FileIdMessage,
+        )
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import Manufacturer
+
+        fit_file = FitFile.from_file(str(tpv_dev_fields_fit_file))
+        for record in fit_file.records:
+            message = record.message
+            if isinstance(message, FileIdMessage):
+                assert message.manufacturer == Manufacturer.PEAKSWARE.value
+                assert message.product_name == "TrainingPeaks Virtual"
+                return
+
+        pytest.fail("FileIdMessage not found in file")
+
+    @pytest.mark.slow
+    def test_edit_fit_with_developer_fields(
+        self, fit_editor, tpv_dev_fields_fit_file, temp_dir
+    ):
+        """Test that a FIT file with empty developer fields can be edited end-to-end."""
+        output_file = temp_dir / "tpv_dev_fields_modified.fit"
+
+        result = fit_editor.edit_fit(tpv_dev_fields_fit_file, output=output_file)
+
+        assert result == output_file
+        assert output_file.exists()
+        verify_garmin_device_info(output_file)
+
+    @pytest.mark.slow
+    def test_dryrun_with_developer_fields(
+        self, fit_editor, tpv_dev_fields_fit_file, temp_dir
+    ):
+        """Test dryrun mode on a FIT file with empty developer fields."""
+        output_file = temp_dir / "tpv_dev_fields_dryrun.fit"
+
+        result = fit_editor.edit_fit(
+            tpv_dev_fields_fit_file, output=output_file, dryrun=True
+        )
+
+        assert result == output_file
+        assert not output_file.exists()
 
 
 class TestCustomDeviceSimulation:

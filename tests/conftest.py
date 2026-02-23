@@ -193,6 +193,28 @@ def zwift_non_utf8_fit_parsed(zwift_non_utf8_fit_file):
     return FitFile.from_file(str(zwift_non_utf8_fit_file))
 
 
+@pytest.fixture(scope="module")
+def tpv_dev_fields_fit_file(test_files_dir):
+    """
+    Return path to TrainingPeaks Virtual test FIT file with developer fields.
+
+    This file was created by TPV on Feb 22, 2026 and contains developer-defined
+    fields (e.g. skin_temperature) where some records have empty/invalid values.
+    These caused an exception in fit_tool before the lenient developer field patch.
+    """
+    return test_files_dir / "tpv_dev_fields_20260222.fit"
+
+
+@pytest.fixture
+def tpv_dev_fields_fit_parsed(tpv_dev_fields_fit_file):
+    """
+    Return parsed TPV FIT file with developer fields.
+
+    Requires the lenient developer field patch to parse correctly.
+    """
+    return FitFile.from_file(str(tpv_dev_fields_fit_file))
+
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for test outputs."""
