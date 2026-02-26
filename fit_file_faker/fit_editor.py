@@ -209,8 +209,7 @@ class FitEditor:
         Note:
             The product_name field is intentionally not copied as Garmin devices
             typically don't set this field. Only files from supported manufacturers
-            (`DEVELOPMENT`, `ZWIFT`, `WAHOO_FITNESS`, `PEAKSWARE`, `HAMMERHEAD`, `COROS`,
-            `MYWHOOSH`) are modified; others are returned unchanged.
+            `MYWHOOSH` (`331`), and `ONELAP` (`307`).
         """
         dt = datetime.fromtimestamp(m.time_created / 1000.0)  # type: ignore
         _logger.info(f'Activity timestamp is "{dt.isoformat()}"')
@@ -260,10 +259,8 @@ class FitEditor:
             True if the manufacturer is from a supported platform and should
             be modified, False otherwise.
 
-        Note:
-            Supported manufacturers include: `DEVELOPMENT` (TrainingPeaks Virtual),
-            `ZWIFT`, `WAHOO_FITNESS`, `PEAKSWARE`, `HAMMERHEAD`, `COROS`, and
-            `MYWHOOSH` (`331`).
+            `ZWIFT`, `WAHOO_FITNESS`, `PEAKSWARE`, `HAMMERHEAD`, `COROS`, `MYWHOOSH` (`331`),
+            and `ONELAP` (`307`).
         """
         if manufacturer is None:
             return False
@@ -275,6 +272,7 @@ class FitEditor:
             Manufacturer.HAMMERHEAD.value,
             Manufacturer.COROS.value,
             331,  # MYWHOOSH is unknown to fit_tools
+            307,  # ONELAP
         ]
 
     def _should_modify_device_info(self, manufacturer: int | None) -> bool:
@@ -306,6 +304,7 @@ class FitEditor:
             Manufacturer.HAMMERHEAD.value,
             Manufacturer.COROS.value,
             331,  # MYWHOOSH is unknown to fit_tools
+            307,  # ONELAP
         ]
 
     def strip_unknown_fields(self, fit_file: FitFile) -> None:
@@ -492,6 +491,11 @@ class FitEditor:
                 # Skip any existing file creator message
                 continue
 
+            # Software message (35) - skip to remove original software info
+            if message.global_id == 35:
+                _logger.debug(f"Skipping Software message at record {i}")
+                continue
+
             # Change device info messages
             if message.global_id == DeviceInfoMessage.ID:
                 if isinstance(message, DeviceInfoMessage):
@@ -522,11 +526,11 @@ class FitEditor:
                             target_device = GarminProduct.EDGE_830.value
 
                         # have not seen this set explicitly in testing, but probable good to set regardless
-                        if message.garmin_product:  # pragma: no cover
+                        if message.garmin_product is not None:  # pragma: no cover
                             message.garmin_product = target_device
-                        if message.product:
+                        if message.product is not None:
                             message.product = target_device  # type: ignore
-                        if message.manufacturer:
+                        if message.manufacturer is not None:
                             message.manufacturer = target_manufacturer
                         message.product_name = ""
                         self.print_message(f"    New Record: {i}", message)
