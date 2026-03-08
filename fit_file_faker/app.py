@@ -33,6 +33,7 @@ from importlib.metadata import version
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional, cast
+from hashlib import sha256
 
 import questionary
 import semver
@@ -396,21 +397,29 @@ def upload_all(
     for f in files:
         _logger.info(f'Processing "{f}"')  # type: ignore
 
+        f_path = dir.joinpath(f)
+
+        h265 = sha256()
+        h265.update(open(f_path, "rb").read())
+        f_hash = h265.hexdigest()
+
         if not preinitialize:
             with NamedTemporaryFile(delete=True, delete_on_close=False) as fp:
                 fit_editor.set_profile(profile)
-                output = fit_editor.edit_fit(dir.joinpath(f), output=Path(fp.name))
+                output = fit_editor.edit_fit(f_path, output=Path(fp.name))
                 if output:
                     _logger.info("Uploading modified file to Garmin Connect")
                     upload(
                         output, profile=profile, original_path=Path(f), dryrun=dryrun
                     )
-                    _logger.debug(f'Adding "{f}" to "uploaded_files"')
+                    _logger.debug(
+                        f'Adding "{f}" with hash "{f_hash}" to "uploaded_files"'
+                    )
         else:
             _logger.info(
                 "Preinitialize was requested, so just marking as uploaded (not actually processing)"
             )
-        uploaded_files.append(f)
+        uploaded_files.append(f"{f}-{f_hash}")
 
     if not dryrun:
         with files_uploaded.open("w") as f:
