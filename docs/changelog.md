@@ -5,6 +5,12 @@ All notable changes to FIT File Faker are documented here.
 This changelog is automatically generated from git commit messages using [git-cliff](https://git-cliff.org/).
 See our [release history](https://github.com/jat255/Fit-File-Faker/releases) on GitHub for downloadable releases.
 
+## [2.1.5](https://github.com/jat255/fit-file-faker/releases/tag/v2.1.5) - (2026-04-27)
+
+### Features
+
+- replace garth with garminconnect for Garmin Connect uploads ([#79](https://github.com/jat255/fit-file-faker/issues/79)) ([5ab22dc](https://github.com/jat255/Fit-File-Faker/commit/5ab22dc6a31620477ab9422df6f4be4f9721f4fa))
+
 ## [2.1.4](https://github.com/jat255/fit-file-faker/releases/tag/v2.1.4) - (2026-02-23)
 
 ### Bug Fixes
