@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from fit_file_faker.app import get_garth_dir, upload, upload_all
+from fit_file_faker.app import get_token_dir, upload, upload_all
 from fit_file_faker.config import AppType, ConfigManager, Profile, ProfileManager
 
 
@@ -57,10 +57,10 @@ class TestMultiProfileWorkflows:
         assert config_manager.config.default_profile == "tpv"
         assert config_manager.config.get_default_profile() == tpv_profile
 
-    def test_profile_specific_garth_isolation(self):
-        """Test that each profile gets its own isolated garth directory."""
-        profile1_dir = get_garth_dir("profile1")
-        profile2_dir = get_garth_dir("profile2")
+    def test_profile_specific_token_isolation(self):
+        """Test that each profile gets its own isolated token directory."""
+        profile1_dir = get_token_dir("profile1")
+        profile2_dir = get_token_dir("profile2")
 
         # Verify directories are different
         assert profile1_dir != profile2_dir
@@ -72,15 +72,15 @@ class TestMultiProfileWorkflows:
         assert profile2_dir.exists()
 
         # Test with special characters in profile name (should be sanitized)
-        special_profile_dir = get_garth_dir("my profile!")
+        special_profile_dir = get_token_dir("my profile!")
         assert special_profile_dir.exists()
         assert "my_profile_" in str(special_profile_dir)
 
     def test_upload_with_different_profiles(
-        self, tmp_path, tpv_fit_file, mock_garth_basic
+        self, tmp_path, tpv_fit_file, mock_garmin_client
     ):
         """Test uploading the same file with different profiles."""
-        mock_garth, mock_garth_exc = mock_garth_basic
+        mock_cls, mock_instance = mock_garmin_client
 
         # Create two profiles
         profile1 = Profile(
@@ -98,17 +98,13 @@ class TestMultiProfileWorkflows:
             fitfiles_path=tmp_path,
         )
 
-        # Mock garth module for upload function
-        with patch.dict(
-            "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
-        ):
-            # Upload with profile 1
-            upload(tpv_fit_file, profile=profile1, dryrun=False)
-            # Upload with profile 2
-            upload(tpv_fit_file, profile=profile2, dryrun=False)
+        # Upload with profile 1
+        upload(tpv_fit_file, profile=profile1, dryrun=False)
+        # Upload with profile 2
+        upload(tpv_fit_file, profile=profile2, dryrun=False)
 
-            # Verify upload was called twice
-            assert mock_garth.client.upload.call_count == 2
+        # Verify upload_activity was called twice
+        assert mock_instance.upload_activity.call_count == 2
 
     def test_migration_workflow(self, tmp_path):
         """Test complete migration workflow from legacy to multi-profile."""
