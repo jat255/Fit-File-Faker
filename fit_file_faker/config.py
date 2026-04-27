@@ -625,7 +625,7 @@ class Profile:
     Garmin Connect credentials.
 
     Attributes:
-        name: Unique profile identifier (used for display and garth dir naming)
+        name: Unique profile identifier (used for display and garmin token dir naming)
         app_type: Type of trainer app (for auto-detection and validation)
         garmin_username: Garmin Connect account email address
         garmin_password: Garmin Connect account password

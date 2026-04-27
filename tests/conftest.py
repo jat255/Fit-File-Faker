@@ -25,14 +25,17 @@ def isolate_config_dirs(monkeypatch, tmp_path):
     """
     config_dir = tmp_path / "config"
     cache_dir = tmp_path / "cache"
+    data_dir = tmp_path / "data"
     config_dir.mkdir()
     cache_dir.mkdir()
+    data_dir.mkdir()
 
     # Create a mock PlatformDirs class
     class MockPlatformDirs:
         def __init__(self, *args, **kwargs):
             self.user_config_path = config_dir
             self.user_cache_path = cache_dir
+            self.user_data_path = data_dir
 
     # Patch platformdirs in both config and app modules
     monkeypatch.setattr("fit_file_faker.config.PlatformDirs", MockPlatformDirs)
@@ -251,50 +254,19 @@ class MockQuestion:
         return self.return_value
 
 
-class MockGarthHTTPError(Exception):
-    """Mock Garth HTTP error with configurable status code."""
-
-    def __init__(self, status_code=500):
-        from unittest.mock import MagicMock
-
-        self.error = MagicMock()
-        self.error.response.status_code = status_code
-
-
-class MockGarthException(Exception):
-    """Mock Garth exception for testing authentication flows."""
-
-    pass
-
-
 @pytest.fixture
-def mock_garth_basic():
-    """Create basic mock garth module with successful operations."""
-    from unittest.mock import MagicMock, Mock
+def mock_garmin_client():
+    """Mock garminconnect.Garmin for upload tests."""
+    from unittest.mock import MagicMock, patch
 
-    mock_garth = MagicMock()
-    mock_garth_exc = MagicMock()
-
-    mock_garth_exc.GarthException = MockGarthException
-    mock_garth_exc.GarthHTTPError = MockGarthHTTPError
-
-    mock_garth.resume.return_value = None
-    mock_garth.client.username = "test_user"
-    mock_garth.client.upload = Mock()
-
-    return mock_garth, mock_garth_exc
-
-
-@pytest.fixture
-def mock_garth_with_login(mock_garth_basic):
-    """Create mock garth that requires login."""
-    mock_garth, mock_garth_exc = mock_garth_basic
-
-    mock_garth.resume.side_effect = MockGarthException("Session expired")
-    mock_garth.login.return_value = None
-    mock_garth.save.return_value = None
-
-    return mock_garth, mock_garth_exc
+    with patch("fit_file_faker.app.Garmin") as mock_cls:
+        mock_instance = MagicMock()
+        mock_cls.return_value = mock_instance
+        mock_instance.login.return_value = (None, None)
+        mock_instance.upload_activity.return_value = {
+            "detailedImportResult": {"successes": [{}]}
+        }
+        yield mock_cls, mock_instance
 
 
 # ==============================================================================

@@ -12,7 +12,7 @@
 
 </div>
 
-This application allows you to easily modify [FIT](https://developer.garmin.com/fit/overview/) files to make them appear to come from a Garmin device (70+ modern devices supported, including Edge 1050, Fenix 8, Forerunner 965, and more) and upload them to Garmin Connect using the [`garth`](https://github.com/matin/garth/) library. The FIT editing is done using Stages Cycling's [`fit_tool`](https://bitbucket.org/stagescycling/python_fit_tool/src/main/) library.
+This application allows you to easily modify [FIT](https://developer.garmin.com/fit/overview/) files to make them appear to come from a Garmin device (70+ modern devices supported, including Edge 1050, Fenix 8, Forerunner 965, and more) and upload them to Garmin Connect using the [`python-garminconnect`](https://github.com/cyberjunky/python-garminconnect) library. The FIT editing is done using Stages Cycling's [`fit_tool`](https://bitbucket.org/stagescycling/python_fit_tool/src/main/) library.
 
 !!! support "Support This Project"
     If FIT File Faker saves you time or enhances your training workflow, consider [buying me a coffee ☕](https://ko-fi.com/josh851356). Your support helps maintain and improve this project!
@@ -379,9 +379,9 @@ fit-file-faker --show-dirs
 
 #### Credential Isolation
 
-Each profile has isolated Garmin credentials stored in profile-specific directories:
-- `.garth_tpv/` for TPV profile
-- `.garth_zwift/` for Zwift profile
+Each profile has isolated Garmin tokens stored in profile-specific directories:
+- `.garmin_tpv/` for TPV profile
+- `.garmin_zwift/` for Zwift profile
 - etc.
 
 ### Verbose Output
@@ -406,8 +406,8 @@ Example output:
            DEBUG        Modifying values                                                     app.py:97
            DEBUG        New Record: 14 - manufacturer: 1 ("GARMIN") - product: 3122 - garmin app.py:55
                     product: 3122 ("GarminProduct.EDGE_830")
-[12:38:34] DEBUG    Using stored Garmin credentials from ".garth" directory                 app.py:118
-[12:38:35] INFO     ✅ Successfully uploaded "path_to_file.fit"                             app.py:137
+[12:38:34] INFO     Authenticating to Garmin Connect                                         app.py:295
+[12:38:35] INFO     ✅ Successfully uploaded "path_to_file.fit"                             app.py:313
 ```
 
 ### "Upload All" and "Monitor" Modes
@@ -445,7 +445,7 @@ $ fit-file-faker --monitor /home/user/Documents/TPVirtual/0123456789ABCEDF/FITFi
 [14:03:58] INFO     Activity timestamp is "2025-01-03T17:01:45"                    app.py:223
 [14:03:59] INFO     Saving modified data to "/tmp/tmpsn4gvpkh"                     app.py:250
 [14:04:00] INFO     Uploading modified file to Garmin Connect                      app.py:346
-[14:04:01] INFO     Uploading "/tmp/tmpsn4gvpkh" using garth                       app.py:295
+[14:04:01] INFO     Uploading "/tmp/tmpsn4gvpkh" to Garmin Connect                  app.py:303
 ^C[14:04:46] INFO     Received keyboard interrupt, shutting down monitor           app.py:372
 ```
 

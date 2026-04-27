@@ -19,9 +19,6 @@ from fit_file_faker.app import (
     upload_all,
 )
 
-# Import shared mock classes from conftest
-from .conftest import MockGarthHTTPError
-
 
 # Test Fixtures and Helpers
 
@@ -43,109 +40,99 @@ def mock_valid_config():
 class TestUploadFunction:
     """Tests for the upload functionality with mocked Garmin requests."""
 
-    def test_upload_success(self, tpv_fit_file, mock_garth_basic, mock_valid_config):
+    def test_upload_success(self, tpv_fit_file, mock_garmin_client, mock_valid_config):
         """Test successful file upload to Garmin Connect."""
-        mock_garth, mock_garth_exc = mock_garth_basic
+        mock_cls, mock_instance = mock_garmin_client
         mock_profile = mock_valid_config.config.get_default_profile()
 
-        with patch.dict(
-            "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
-        ):
-            upload(tpv_fit_file, profile=mock_profile, dryrun=False)
-            mock_garth.client.upload.assert_called_once()
+        upload(tpv_fit_file, profile=mock_profile, dryrun=False)
 
-    def test_upload_with_login(
-        self, tpv_fit_file, mock_garth_with_login, mock_valid_config
+        mock_instance.login.assert_called_once()
+        mock_instance.upload_activity.assert_called_once()
+
+    def test_upload_requires_login(
+        self, tpv_fit_file, mock_garmin_client, mock_valid_config
     ):
-        """Test upload that requires login."""
-        mock_garth, mock_garth_exc = mock_garth_with_login
+        """Test that login is always called before upload."""
+        mock_cls, mock_instance = mock_garmin_client
         mock_profile = mock_valid_config.config.get_default_profile()
 
-        with patch.dict(
-            "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
-        ):
-            upload(tpv_fit_file, profile=mock_profile, dryrun=False)
+        upload(tpv_fit_file, profile=mock_profile, dryrun=False)
 
-            # Verify login was called with config credentials
-            mock_garth.login.assert_called_once_with("test@example.com", "testpass")
-            mock_garth.save.assert_called_once()
+        mock_instance.login.assert_called_once()
 
-    def test_upload_http_errors(
-        self, tpv_fit_file, mock_garth_basic, caplog, mock_valid_config
+    def test_upload_conflict_409(
+        self, tpv_fit_file, mock_garmin_client, caplog, mock_valid_config
     ):
-        """Test upload handling HTTP errors - 409 conflict handled gracefully, others raise."""
-        mock_garth, mock_garth_exc = mock_garth_basic
+        """Test upload handles 409 conflict (duplicate activity) gracefully."""
+        from garminconnect import GarminConnectConnectionError
+
+        mock_cls, mock_instance = mock_garmin_client
         mock_profile = mock_valid_config.config.get_default_profile()
 
-        # Test 409 conflict (duplicate activity) - should be handled gracefully
-        mock_garth.client.upload = Mock(side_effect=MockGarthHTTPError(409))
-        with patch.dict(
-            "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
-        ):
+        mock_instance.upload_activity.side_effect = GarminConnectConnectionError(
+            "API Error 409 - Conflict"
+        )
+
+        upload(
+            tpv_fit_file,
+            profile=mock_profile,
+            original_path=Path("test.fit"),
+            dryrun=False,
+        )
+
+        assert "conflict" in caplog.text.lower() or "409" in caplog.text
+
+    def test_upload_http_error(
+        self, tpv_fit_file, mock_garmin_client, mock_valid_config
+    ):
+        """Test upload re-raises non-409 HTTP errors."""
+        from garminconnect import GarminConnectConnectionError
+
+        mock_cls, mock_instance = mock_garmin_client
+        mock_profile = mock_valid_config.config.get_default_profile()
+
+        mock_instance.upload_activity.side_effect = GarminConnectConnectionError(
+            "API Error 500 - Server Error"
+        )
+
+        with pytest.raises(GarminConnectConnectionError):
             upload(
                 tpv_fit_file,
                 profile=mock_profile,
                 original_path=Path("test.fit"),
                 dryrun=False,
             )
-            assert "conflict" in caplog.text.lower() or "409" in caplog.text
 
-        # Test non-409 errors (500) - should raise exception
-        caplog.clear()
-        mock_garth.client.upload = Mock(side_effect=MockGarthHTTPError(500))
-        with patch.dict(
-            "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
-        ):
-            with pytest.raises(MockGarthHTTPError):
-                upload(
-                    tpv_fit_file,
-                    profile=mock_profile,
-                    original_path=Path("test.fit"),
-                    dryrun=False,
-                )
-
-    def test_upload_dryrun(self, tpv_fit_file, mock_garth_basic, mock_valid_config):
+    def test_upload_dryrun(self, tpv_fit_file, mock_garmin_client, mock_valid_config):
         """Test that dryrun doesn't actually upload."""
-        mock_garth, mock_garth_exc = mock_garth_basic
+        mock_cls, mock_instance = mock_garmin_client
         mock_profile = mock_valid_config.config.get_default_profile()
 
-        with patch.dict(
-            "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
-        ):
-            upload(tpv_fit_file, profile=mock_profile, dryrun=True)
-            mock_garth.client.upload.assert_not_called()
+        upload(tpv_fit_file, profile=mock_profile, dryrun=True)
 
-    def test_upload_interactive_credentials(self, tpv_fit_file, mock_garth_with_login):
-        """Test interactive credential input when not in config."""
-        mock_garth, mock_garth_exc = mock_garth_with_login
+        mock_instance.login.assert_called_once()
+        mock_instance.upload_activity.assert_not_called()
 
-        with (
-            patch.dict(
-                "sys.modules", {"garth": mock_garth, "garth.exc": mock_garth_exc}
-            ),
-            patch("fit_file_faker.app.questionary") as mock_questionary,
-            patch("fit_file_faker.app.config_manager") as mock_config_manager,
-        ):
-            # Mock questionary to provide credentials
-            mock_questionary.text.return_value.ask.return_value = (
-                "interactive@example.com"
-            )
-            mock_questionary.password.return_value.ask.return_value = "interactive_pass"
+    def test_upload_missing_credentials(self, tpv_fit_file, mock_garmin_client):
+        """Test that ValueError is raised when profile has no credentials."""
+        mock_profile = MagicMock()
+        mock_profile.name = "test"
+        mock_profile.garmin_username = None
+        mock_profile.garmin_password = None
 
-            # Mock profile with no credentials
-            mock_profile = MagicMock()
-            mock_profile.garmin_username = None
-            mock_profile.garmin_password = None
-            mock_config_manager.config.get_default_profile.return_value = mock_profile
-
+        with pytest.raises(ValueError, match="missing Garmin credentials"):
             upload(tpv_fit_file, profile=mock_profile, dryrun=False)
 
-            # Verify interactive prompts were used
-            mock_questionary.text.assert_called_once()
-            mock_questionary.password.assert_called_once()
-            mock_garth.login.assert_called_once_with(
-                "interactive@example.com", "interactive_pass"
-            )
+    def test_upload_missing_password(self, tpv_fit_file, mock_garmin_client):
+        """Test that ValueError is raised when profile has no password."""
+        mock_profile = MagicMock()
+        mock_profile.name = "test"
+        mock_profile.garmin_username = "user@example.com"
+        mock_profile.garmin_password = None
+
+        with pytest.raises(ValueError, match="missing Garmin credentials"):
+            upload(tpv_fit_file, profile=mock_profile, dryrun=False)
 
 
 class TestUploadAllFunction:
@@ -1370,18 +1357,18 @@ class TestCLIIntegration:
                 "Test error message" in record.message for record in caplog.records
             )
 
-    def test_show_dirs_flag_with_garth_dirs(self, capsys):
-        """Test --show-dirs flag when garth directories exist."""
+    def test_show_dirs_flag_with_garmin_dirs(self, capsys):
+        """Test --show-dirs flag when garmin token directories exist."""
         import re
         from fit_file_faker.app import run
         from fit_file_faker.config import dirs
 
-        # Create actual garth directories in the cache path
+        # Create actual garmin token directories in the data path
         # (isolate_config_dirs fixture ensures this is a tmp directory)
-        garth_dir1 = dirs.user_cache_path / ".garth_profile1"
-        garth_dir2 = dirs.user_cache_path / ".garth_profile2"
-        garth_dir1.mkdir(parents=True, exist_ok=True)
-        garth_dir2.mkdir(parents=True, exist_ok=True)
+        garmin_dir1 = dirs.user_data_path / ".garmin_profile1"
+        garmin_dir2 = dirs.user_data_path / ".garmin_profile2"
+        garmin_dir1.mkdir(parents=True, exist_ok=True)
+        garmin_dir2.mkdir(parents=True, exist_ok=True)
 
         with patch("sys.argv", ["fit-file-faker", "--show-dirs"]):
             with pytest.raises(SystemExit) as exc_info:
@@ -1397,6 +1384,7 @@ class TestCLIIntegration:
         output_normalized = re.sub(r"\s+", "", captured.out)
         config_path_normalized = re.sub(r"\s+", "", str(dirs.user_config_path))
         cache_path_normalized = re.sub(r"\s+", "", str(dirs.user_cache_path))
+        data_path_normalized = re.sub(r"\s+", "", str(dirs.user_data_path))
 
         # Verify that the output contains the expected sections
         assert "Executable:" in captured.out
@@ -1405,20 +1393,22 @@ class TestCLIIntegration:
         assert config_path_normalized in output_normalized
         assert "Cache directory:" in captured.out
         assert cache_path_normalized in output_normalized
+        assert "Data directory:" in captured.out
+        assert data_path_normalized in output_normalized
 
-        # Should show that garth directories were found
-        assert "Garmin credential directories:" in captured.out
-        assert ".garth_profile1" in captured.out
-        assert ".garth_profile2" in captured.out
+        # Should show that garmin token directories were found
+        assert "Garmin token directories:" in captured.out
+        assert ".garmin_profile1" in captured.out
+        assert ".garmin_profile2" in captured.out
 
-    def test_show_dirs_flag_without_garth_dirs(self, capsys):
-        """Test --show-dirs flag when no garth directories exist."""
+    def test_show_dirs_flag_without_garmin_dirs(self, capsys):
+        """Test --show-dirs flag when no garmin token directories exist."""
         import re
         from fit_file_faker.app import run
         from fit_file_faker.config import dirs
 
-        # Don't create any garth directories
-        # (isolate_config_dirs fixture ensures cache directory is empty)
+        # Don't create any garmin directories
+        # (isolate_config_dirs fixture ensures data directory is empty)
 
         with patch("sys.argv", ["fit-file-faker", "--show-dirs"]):
             with pytest.raises(SystemExit) as exc_info:
@@ -1443,6 +1433,6 @@ class TestCLIIntegration:
         assert "Cache directory:" in captured.out
         assert cache_path_normalized in output_normalized
 
-        # Should show message about no garth directories found
-        assert "No Garmin credential directories found" in captured.out
+        # Should show message about no garmin token directories found
+        assert "No Garmin token directories found" in captured.out
         assert "will be created on first use" in captured.out

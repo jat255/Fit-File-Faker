@@ -58,7 +58,11 @@ logging.basicConfig(
 )
 _logger.setLevel(logging.INFO)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
-logging.getLogger("oauth1_auth").setLevel(logging.WARNING)
+
+from garminconnect import (
+    Garmin,
+    GarminConnectConnectionError,
+)
 
 from . import __version_date__
 from .config import config_manager, dirs, profile_manager, Profile
@@ -72,34 +76,28 @@ c = Console()
 FILES_UPLOADED_NAME = Path(".uploaded_files.json")
 
 
-def get_garth_dir(profile_name: str) -> Path:
-    """Get profile-specific garth directory for credential isolation.
+def get_token_dir(profile_name: str) -> Path:
+    """Get profile-specific token directory for credential isolation.
 
-    Each profile gets its own garth directory to prevent credential conflicts
+    Each profile gets its own token directory to prevent credential conflicts
     when managing multiple Garmin accounts. The profile name is sanitized to
-    ensure filesystem compatibility.
+    ensure filesystem compatibility. Tokens are stored under user_data_path
+    (not cache) so they survive routine cache wipes.
 
     Args:
         profile_name: The name of the profile.
 
     Returns:
-        Path to the profile-specific garth directory.
-
-    Examples:
-        >>> get_garth_dir("tpv")
-        PosixPath('/Users/josh/Library/Caches/FitFileFaker/.garth_tpv')
-        >>>
-        >>> get_garth_dir("work-account")
-        PosixPath('/Users/josh/Library/Caches/FitFileFaker/.garth_work-account')
+        Path to the profile-specific token directory.
 
     Note:
         The directory is automatically created if it doesn't exist.
         Profile names with special characters are sanitized (replaced with '_').
     """
     safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in profile_name)
-    garth_dir = dirs.user_cache_path / f".garth_{safe_name}"
-    garth_dir.mkdir(exist_ok=True, parents=True)
-    return garth_dir
+    token_dir = dirs.user_data_path / f".garmin_{safe_name}"
+    token_dir.mkdir(exist_ok=True, parents=True)
+    return token_dir
 
 
 class NewFileEventHandler(PatternMatchingEventHandler):
@@ -253,8 +251,8 @@ def upload(
     """Upload a FIT file to Garmin Connect.
 
     Authenticates to Garmin Connect using credentials from the specified profile,
-    then uploads the specified FIT file. Credentials are cached in a profile-specific
-    cache directory for future use.
+    then uploads the specified FIT file. Tokens are cached in a profile-specific
+    data directory for future use.
 
     Args:
         fn: Path to the (modified) FIT file to upload.
@@ -265,8 +263,9 @@ def upload(
             Defaults to `False`.
 
     Raises:
-        GarthHTTPError: If upload fails with an HTTP error. 409 (conflict/duplicate)
-            errors are caught and logged as warnings, but other HTTP errors are re-raised.
+        ValueError: If the profile is missing Garmin credentials.
+        GarminConnectConnectionError: If upload fails with an HTTP error other than 409.
+            409 (conflict/duplicate) errors are caught and logged as warnings.
 
     Examples:
         >>> from pathlib import Path
@@ -277,58 +276,41 @@ def upload(
         >>> upload(Path("activity_modified.fit"), profile=my_profile, dryrun=True)
 
     Note:
-        Garmin Connect credentials are read from the profile. Credentials are cached
-        in profile-specific directories like ~/.cache/FitFileFaker/.garth_<profile_name>
+        Garmin Connect credentials are read from the profile. Tokens are cached in
+        profile-specific directories like ~/Library/Application Support/FitFileFaker/.garmin_<profile_name>
         (location varies by platform).
     """
-    # get credentials and login if needed
-    import garth
-    from garth.exc import GarthException, GarthHTTPError
+    token_dir = get_token_dir(profile.name)
+    _logger.debug(f'Using "{token_dir}" for Garmin token storage')
 
-    garth_dir = get_garth_dir(profile.name)
-    _logger.debug(f'Using "{garth_dir}" for garth credentials')
+    email = profile.garmin_username
+    password = profile.garmin_password
+    if not email or not password:
+        raise ValueError(
+            f'Profile "{profile.name}" is missing Garmin credentials. '
+            "Run with --config-menu to update the profile."
+        )
 
-    try:
-        garth.resume(str(garth_dir.absolute()))
-        garth.client.username
-        _logger.debug(f'Using stored Garmin credentials from "{garth_dir}" directory')
-    except (GarthException, FileNotFoundError):
-        # Session is expired. You'll need to log in again
-        _logger.info("Authenticating to Garmin Connect")
-        email = profile.garmin_username
-        password = profile.garmin_password
-        if not email:
-            email = questionary.text(
-                'No "garmin_username" variable set; Enter email address: '
-            ).ask()
-        _logger.debug(f'Using username "{email}"')
-        if not password:
-            password = questionary.password(
-                'No "garmin_password" variable set; Enter password: '
-            ).ask()
-            _logger.debug("Using password from user input")
-        else:
-            _logger.debug('Using password stored in "garmin_password"')
-        garth.login(email, password)
-        garth.save(str(garth_dir.absolute()))
+    client = Garmin(email, password)
+    _logger.info("Authenticating to Garmin Connect")
+    client.login(tokenstore=str(token_dir))
 
-    with fn.open("rb") as f:
+    if not dryrun:
         try:
-            if not dryrun:
-                _logger.info(f'Uploading "{fn}" using garth')
-                garth.client.upload(f)
-                _logger.info(
-                    f':white_check_mark: Successfully uploaded "{str(original_path)}"'
-                )
-            else:
-                _logger.info(f'Skipping upload of "{fn}" because dryrun was requested')
-        except GarthHTTPError as e:
-            if e.error.response.status_code == 409:
+            _logger.info(f'Uploading "{fn}" to Garmin Connect')
+            client.upload_activity(str(fn))
+            _logger.info(
+                f':white_check_mark: Successfully uploaded "{str(original_path)}"'
+            )
+        except GarminConnectConnectionError as e:
+            if "409" in str(e):
                 _logger.warning(
                     f':x: Received HTTP conflict (activity already exists) for "{str(original_path)}"'
                 )
             else:
-                raise e
+                raise
+    else:
+        _logger.info(f'Skipping upload of "{fn}" because dryrun was requested')
 
 
 def upload_all(
@@ -719,15 +701,20 @@ def run():
             f'\n[green]Cache directory:[/green] [yellow]"{config_dirs.user_cache_path}"[/yellow]'
         )
 
-        # Find and list actual .garth directories
-        garth_dirs = sorted(config_dirs.user_cache_path.glob(".garth_*"))
-        if garth_dirs:
-            console.print("  [dim]Garmin credential directories:[/dim]")
-            for garth_dir in garth_dirs:
-                console.print(f'    [yellow]"{garth_dir}"[/yellow]')
+        # Show data directory and token directories
+        console.print(
+            f'\n[green]Data directory:[/green] [yellow]"{config_dirs.user_data_path}"[/yellow]'
+        )
+
+        # Find and list actual .garmin token directories
+        garmin_dirs = sorted(config_dirs.user_data_path.glob(".garmin_*"))
+        if garmin_dirs:
+            console.print("  [dim]Garmin token directories:[/dim]")
+            for garmin_dir in garmin_dirs:
+                console.print(f'    [yellow]"{garmin_dir}"[/yellow]')
         else:
             console.print(
-                "  [dim]No Garmin credential directories found (will be created on first use)[/dim]"
+                "  [dim]No Garmin token directories found (will be created on first use)[/dim]"
             )
 
         console.print()

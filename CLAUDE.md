@@ -99,7 +99,7 @@ fit_file_faker/
 3. **Identify device messages**: Locates `FileIdMessage`, `FileCreatorMessage`, and `DeviceInfoMessage` records
 4. **Rewrite manufacturer/product IDs**: Changes manufacturer codes from DEVELOPMENT (255), ZWIFT, WAHOO_FITNESS, PEAKSWARE, HAMMERHEAD, COROS, or MYWHOOSH (331) to GARMIN (1) with Edge 830 product ID (3122)
 5. **Rebuild FIT file**: Uses `FitFileBuilder` to reconstruct the file with modified messages
-6. **Upload (optional)**: Authenticates to Garmin Connect via `garth` library and uploads the modified file
+6. **Upload (optional)**: Authenticates to Garmin Connect via `python-garminconnect` library and uploads the modified file
 
 ### Module Breakdown
 
@@ -111,7 +111,7 @@ fit_file_faker/
 - `ConfigManager`: Handles config file I/O, validation, auto-migration from v1.2.4 format
 - `ProfileManager`: CRUD operations for profile management (create, read, update, delete, set_default)
 - `migrate_legacy_config()`: Auto-converts single-profile configs to multi-profile format
-- `get_garth_dir(profile_name)`: Profile-specific credential isolation
+- `get_token_dir(profile_name)`: Profile-specific token directory isolation
 - Stored in platform-specific user config directory (via `platformdirs`) as `.config.json`
 - **Auto-detection**: Platform-specific directory detection for TPV, Zwift, MyWhoosh via `app_registry.py`
 - **TUI**: Rich-based interactive menu system for profile management
@@ -149,11 +149,11 @@ fit_file_faker/
 - CLI argument parsing and validation
 - **Multi-Profile Support**: `--profile/-p`, `--list-profiles`, `--config-menu` arguments
 - `select_profile()`: Profile selection logic (arg → default → prompt)
-- `upload()`: Garmin Connect upload with OAuth authentication via `garth` (now accepts `Profile` parameter)
+- `upload()`: Garmin Connect upload with OAuth authentication via `python-garminconnect` (accepts `Profile` parameter)
 - `upload_all()`: Batch processes all FIT files in a directory (profile-aware)
 - `monitor()`: Watches directory for new FIT files using `watchdog` (profile-specific)
 - `NewFileEventHandler`: Event handler for monitoring mode (uses profile)
-- Credentials cached in profile-specific cache directories (`.garth_{profile_name}` folders)
+- Tokens cached in profile-specific data directories (`.garmin_{profile_name}` folders)
 - Handles HTTP 409 conflicts (duplicate activities) gracefully
 - Maintains `.uploaded_files.json` to track processed files
 
@@ -202,7 +202,7 @@ The tool recognizes and modifies FIT files from:
 - `RichHandler` for colored, timestamped logs
 - Custom `FitFileLogFilter` in `fit_editor.py` to suppress fit_tool's "actual:" warnings
 - Debug mode (`-v`) provides detailed message-by-message processing logs
-- Separate loggers for different modules (urllib3, oauth1_auth, watchdog, etc.)
+- Separate loggers for different modules (urllib3, watchdog, etc.)
 
 ## Important Implementation Notes
 
@@ -358,7 +358,7 @@ Coverage reports are uploaded to Codecov on successful Ubuntu + Python 3.12 runs
 ### Test Features
 
 - ✅ **Complete isolation**: All tests use temporary directories (no real config touched)
-- ✅ **Mocked services**: Garmin Connect (`garth`) and user prompts (`questionary`)
+- ✅ **Mocked services**: Garmin Connect (`garminconnect`) and user prompts (`questionary`)
 - ✅ **Shared fixtures**: `conftest.py` provides reusable fixtures to reduce duplication
 - ✅ **Platform coverage**: Tests run on all supported platforms (TPV, Zwift, MyWhoosh, Karoo, COROS)
 
