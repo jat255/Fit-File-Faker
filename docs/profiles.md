@@ -228,17 +228,17 @@ For unsupported trainer apps or custom setups:
 
 Each profile has its own isolated Garmin authentication:
 
-- **Garth directories**: `/Users/test/Library/Caches/FitFileFaker/.garth_{profile_name}/`
+- **Token directories**: `/Users/test/Library/Application Support/FitFileFaker/.garmin_{profile_name}/`
 - **Separate OAuth tokens**: No credential sharing between profiles
 - **Secure storage**: Platform-specific storage via `platformdirs`
 
 ### Example Directory Structure
 
 ```
-/Users/test/Library/Caches/FitFileFaker
-├── .garth_tpv/          # TPV profile credentials
-├── .garth_zwift/        # Zwift profile credentials
-└── .garth_mywhoosh/     # MyWhoosh profile credentials
+/Users/test/Library/Application Support/FitFileFaker
+├── .garmin_tpv/          # TPV profile tokens
+├── .garmin_zwift/        # Zwift profile tokens
+└── .garmin_mywhoosh/     # MyWhoosh profile tokens
 ```
 
 ## Configuration File

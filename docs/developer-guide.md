@@ -151,7 +151,7 @@ The tool follows a six-step process:
     to `GARMIN` (1) with Edge 830 product ID (3122)
 
 5. **Rebuild FIT file**: Uses `FitFileBuilder` to reconstruct the file with modified messages
-6. **Upload (optional)**: Authenticates to Garmin Connect via `garth` library and uploads the modified file
+6. **Upload (optional)**: Authenticates to Garmin Connect via `python-garminconnect` library and uploads the modified file
 
 ### Module Breakdown
 
@@ -196,7 +196,7 @@ The tool follows a six-step process:
 
 **Utilities**:
 
-- `get_garth_dir(profile_name)`: Profile-specific credential isolation
+- `get_token_dir(profile_name)`: Profile-specific token directory isolation
 - `PathEncoder`: Custom JSON encoder for Path and Enum objects
 - Stored in platform-specific user config directory (via `platformdirs`) as `.config.json`
 - Auto-detection via `app_registry.py` for TPV, Zwift, MyWhoosh directories
@@ -384,9 +384,9 @@ Firmware versions should be periodically updated to reflect latest stable releas
     - `--list-profiles`: Display all configured profiles
     - `--config-menu`: Launch interactive profile management
 - `select_profile()`: Profile selection logic (arg → default → prompt)
-- `upload()`: Garmin Connect upload with OAuth authentication via `garth` (now accepts `Profile` parameter)
-    - Handles authentication and credential prompting
-    - Caches credentials in profile-specific `.garth_{profile_name}` directories
+- `upload()`: Garmin Connect upload with OAuth authentication via `python-garminconnect` (accepts `Profile` parameter)
+    - Authenticates using `Garmin.login(tokenstore=...)` with automatic token caching
+    - Tokens cached in profile-specific `.garmin_{profile_name}` directories under `user_data_path`
     - Gracefully handles HTTP 409 conflicts (duplicate activities)
 - `upload_all()`: Batch processes all FIT files in a directory (profile-aware)
     - Maintains `.uploaded_files.json` to track processed files
@@ -423,7 +423,7 @@ The tool recognizes and modifies FIT files from:
 - `RichHandler` for colored, timestamped logs with traceback support
 - Custom `FitFileLogFilter` in `fit_editor.py` to suppress fit_tool's "actual:" warnings
 - Debug mode (`-v`) provides detailed message-by-message processing logs
-- Separate log level configuration for different modules (urllib3, oauth1_auth, watchdog, asyncio, etc.)
+- Separate log level configuration for different modules (urllib3, watchdog, asyncio, etc.)
 
 
 ## 📚 Extensibility
@@ -603,13 +603,10 @@ The test suite uses shared fixtures in `conftest.py` to reduce duplication:
 #### Shared Mock Classes
 
 - **`MockQuestion`**: Mock for questionary interactive prompts
-- **`MockGarthHTTPError`**: Configurable HTTP error mock with status codes
-- **`MockGarthException`**: Standard Garth exception for auth flow testing
 
 #### Shared Fixtures
 
-- **`mock_garth_basic`**: Basic Garmin Connect mock for successful operations
-- **`mock_garth_with_login`**: Garmin mock requiring authentication
+- **`mock_garmin_client`**: Mocks `garminconnect.Garmin` for upload tests (patches `fit_file_faker.app.Garmin`)
 - **`isolate_config_dirs`** (autouse): Automatically isolates all tests from real user directories
 - **`temp_dir`**: Creates temporary directories for test outputs
 - **`mock_config_file`**: Creates mock configuration files
@@ -618,12 +615,9 @@ The test suite uses shared fixtures in `conftest.py` to reduce duplication:
 
 #### External Services
 
-- **Garmin Connect** (`garth`): Mocked using `sys.modules` patching with shared fixtures
+- **Garmin Connect** (`garminconnect`): Mocked by patching `fit_file_faker.app.Garmin` at the class level via `mock_garmin_client` fixture
 - **User prompts** (`questionary`): Mocked using `MockQuestion` helper class
 - **File system** (`platformdirs`): Automatically redirected to temp directories via `isolate_config_dirs`
-
-!!! note "Why sys.modules for garth?"
-    The `garth` library is imported inside functions (lazy import), so we use `patch.dict('sys.modules')` to inject mock modules that get imported at runtime.
 
 ### Running Tests
 
