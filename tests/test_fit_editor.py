@@ -76,6 +76,7 @@ class TestFitEditor:
             ("tpv_fit_0_4_30_parsed", "tpv_0_4_30_modified.fit"),
             ("zwift_fit_parsed", "zwift_modified.fit"),
             ("mywhoosh_fit_parsed", "mywhoosh_modified.fit"),
+            ("onelap_fit_parsed", "onelap_modified.fit"),
             ("karoo_fit_parsed", "karoo_modified.fit"),
             ("coros_fit_parsed", "coros_modified.fit"),
             ("zwift_non_utf8_fit_parsed", "zwift_non_utf8_modified.fit"),
@@ -85,7 +86,7 @@ class TestFitEditor:
     def test_edit_fit_files(
         self, fit_editor, fit_file_fixture, output_name, temp_dir, request
     ):
-        """Test editing FIT files from various platforms (TPV, Zwift, MyWhoosh, Karoo, COROS).
+        """Test editing FIT files from various platforms (TPV, Zwift, MyWhoosh, Onelap, Karoo, COROS).
 
         Includes test for Zwift file with non-UTF-8 encoded strings.
         """
@@ -172,6 +173,7 @@ class TestFitEditor:
         assert fit_editor._should_modify_manufacturer(Manufacturer.HAMMERHEAD.value)
         assert fit_editor._should_modify_manufacturer(Manufacturer.COROS.value)
         assert fit_editor._should_modify_manufacturer(331)  # MYWHOOSH
+        assert fit_editor._should_modify_manufacturer(Manufacturer.ONELAP.value)
 
         # Should NOT modify Garmin
         assert not fit_editor._should_modify_manufacturer(Manufacturer.GARMIN.value)
@@ -190,6 +192,7 @@ class TestFitEditor:
         assert fit_editor._should_modify_device_info(Manufacturer.HAMMERHEAD.value)
         assert fit_editor._should_modify_device_info(Manufacturer.COROS.value)
         assert fit_editor._should_modify_device_info(331)  # MYWHOOSH
+        assert fit_editor._should_modify_device_info(Manufacturer.ONELAP.value)
 
         # Should NOT modify None
         assert not fit_editor._should_modify_device_info(None)
@@ -213,6 +216,23 @@ class TestFitEditor:
 
         # Should return None when output path is not provided for parsed FIT
         assert result is None
+
+    def test_skip_software_message_for_onelap(self, fit_editor, onelap_fit_parsed, temp_dir):
+        """Test that Software message (ID 35) is skipped when the file is from Onelap."""
+        from fit_file_faker.vendor.fit_tool.fit_file import FitFile
+        from fit_file_faker.vendor.fit_tool.data_message import DataMessage
+
+        output_file = temp_dir / "onelap_no_software.fit"
+        
+        # This will trigger the skip logic for global_id == 35 because is_onelap will be True
+        result = fit_editor.edit_fit(onelap_fit_parsed, output=output_file)
+        assert result == output_file
+        
+        # Verify that the generated file does not have a Software DataMessage
+        modified_fit = FitFile.from_file(str(output_file))
+        for record in modified_fit.records:
+            if isinstance(record.message, DataMessage):
+                assert record.message.global_id != 35
 
     def test_strip_unknown_fields(self, fit_editor, zwift_fit_parsed):
         """Test that unknown fields are properly stripped."""

@@ -10,6 +10,7 @@ from fit_file_faker.app_registry import (
     APP_REGISTRY,
     CustomDetector,
     MyWhooshDetector,
+    OnelapDetector,
     TPVDetector,
     ZwiftDetector,
     get_detector,
@@ -26,6 +27,7 @@ class TestDetectorNames:
             (TPVDetector, "TrainingPeaks Virtual"),
             (ZwiftDetector, "Zwift"),
             (MyWhooshDetector, "MyWhoosh"),
+            (OnelapDetector, "Onelap (顽鹿运动)"),
             (CustomDetector, "Custom (Manual Path)"),
         ],
     )
@@ -40,6 +42,7 @@ class TestDetectorNames:
             (TPVDetector, "TPVirtual"),
             (ZwiftDetector, "Zwift"),
             (MyWhooshDetector, "MyWhoosh"),
+            (OnelapDetector, "Onelap"),
             (CustomDetector, "Custom"),
         ],
     )
@@ -54,7 +57,7 @@ class TestDetectorValidation:
 
     @pytest.mark.parametrize(
         "detector_class",
-        [TPVDetector, ZwiftDetector, MyWhooshDetector, CustomDetector],
+        [TPVDetector, ZwiftDetector, MyWhooshDetector, OnelapDetector, CustomDetector],
     )
     def test_validate_path_exists(self, detector_class, tmp_path):
         """Test that validation succeeds for existing directory."""
@@ -66,7 +69,7 @@ class TestDetectorValidation:
 
     @pytest.mark.parametrize(
         "detector_class",
-        [TPVDetector, ZwiftDetector, MyWhooshDetector, CustomDetector],
+        [TPVDetector, ZwiftDetector, MyWhooshDetector, OnelapDetector, CustomDetector],
     )
     def test_validate_path_not_exists(self, detector_class):
         """Test that validation fails for non-existent path."""
@@ -207,6 +210,58 @@ class TestMyWhooshDetector:
         assert result is None
 
 
+class TestOnelapDetector:
+    """Tests for Onelap detector platform-specific paths."""
+
+    def test_get_default_path_macos(self, monkeypatch, tmp_path):
+        """Test Onelap default path detection on macOS."""
+        monkeypatch.setattr("sys.platform", "darwin")
+
+        # Create mock Onelap directory
+        onelap_dir = tmp_path / "Documents" / "Onelap" / "Activity"
+        onelap_dir.mkdir(parents=True)
+
+        # Mock Path.home() to return our tmp_path
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        detector = OnelapDetector()
+        result = detector.get_default_path()
+
+        assert result == onelap_dir
+
+    def test_get_default_path_windows(self, monkeypatch, tmp_path):
+        """Test Onelap default path detection on Windows."""
+        monkeypatch.setattr("sys.platform", "win32")
+
+        # Create mock Onelap Windows directory
+        onelap_dir = tmp_path / "Documents" / "Onelap" / "Activity"
+        onelap_dir.mkdir(parents=True)
+
+        # Mock Path.home() to return our tmp_path
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        detector = OnelapDetector()
+        result = detector.get_default_path()
+
+        assert result == onelap_dir
+
+    def test_get_default_path_fallback(self, monkeypatch, tmp_path):
+        """Test Onelap fallback path detection."""
+        monkeypatch.setattr("sys.platform", "win32")
+
+        # Create mock Onelap fallback directory
+        onelap_dir = tmp_path / "Documents" / "顽鹿运动" / "Activity"
+        onelap_dir.mkdir(parents=True)
+
+        # Mock Path.home() to return our tmp_path
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        detector = OnelapDetector()
+        result = detector.get_default_path()
+
+        assert result == onelap_dir
+
+
 class TestCustomDetector:
     """Tests for Custom detector."""
 
@@ -221,7 +276,7 @@ class TestGetDefaultPathNotFound:
 
     @pytest.mark.parametrize(
         "detector_class",
-        [ZwiftDetector, MyWhooshDetector],
+        [ZwiftDetector, MyWhooshDetector, OnelapDetector],
     )
     def test_get_default_path_not_found(self, detector_class, monkeypatch, tmp_path):
         """Test that None is returned when detector's directory doesn't exist."""
@@ -242,6 +297,7 @@ class TestAppRegistry:
         assert AppType.TP_VIRTUAL in APP_REGISTRY
         assert AppType.ZWIFT in APP_REGISTRY
         assert AppType.MYWHOOSH in APP_REGISTRY
+        assert AppType.ONELAP in APP_REGISTRY
         assert AppType.CUSTOM in APP_REGISTRY
 
     def test_get_detector_tp_virtual(self):
@@ -261,6 +317,12 @@ class TestAppRegistry:
         detector = get_detector(AppType.MYWHOOSH)
         assert isinstance(detector, MyWhooshDetector)
         assert detector.get_display_name() == "MyWhoosh"
+
+    def test_get_detector_onelap(self):
+        """Test getting Onelap detector from factory."""
+        detector = get_detector(AppType.ONELAP)
+        assert isinstance(detector, OnelapDetector)
+        assert detector.get_display_name() == "Onelap (顽鹿运动)"
 
     def test_get_detector_custom(self):
         """Test getting Custom detector from factory."""

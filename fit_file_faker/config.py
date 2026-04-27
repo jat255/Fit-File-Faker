@@ -1674,7 +1674,7 @@ class ProfileManager:
             questionary.Choice("TrainingPeaks Virtual", AppType.TP_VIRTUAL),
             questionary.Choice("Zwift", AppType.ZWIFT),
             questionary.Choice("MyWhoosh", AppType.MYWHOOSH),
-            questionary.Choice("Onelap (顽鹿运动)", AppType.ONELAP),
+            questionary.Choice("Onelap", AppType.ONELAP),
             questionary.Choice("Custom (manual path)", AppType.CUSTOM),
         ]
 

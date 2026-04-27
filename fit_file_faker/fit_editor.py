@@ -36,6 +36,9 @@ from fit_file_faker.vendor.fit_tool.profile.messages.file_creator_message import
 from fit_file_faker.vendor.fit_tool.profile.messages.file_id_message import (
     FileIdMessage,
 )
+from fit_file_faker.vendor.fit_tool.profile.messages.software_message import (
+    SoftwareMessage,
+)
 from fit_file_faker.vendor.fit_tool.profile.profile_type import (
     GarminProduct,
     Manufacturer,
@@ -209,7 +212,8 @@ class FitEditor:
         Note:
             The product_name field is intentionally not copied as Garmin devices
             typically don't set this field. Only files from supported manufacturers
-            `MYWHOOSH` (`331`), and `ONELAP` (`307`).
+            (`DEVELOPMENT`, `ZWIFT`, `WAHOO_FITNESS`, `PEAKSWARE`, `HAMMERHEAD`, `COROS`,
+            `MYWHOOSH` (`331`), and `ONELAP` (`307`)) are modified; others are returned unchanged.
         """
         dt = datetime.fromtimestamp(m.time_created / 1000.0)  # type: ignore
         _logger.info(f'Activity timestamp is "{dt.isoformat()}"')
@@ -259,6 +263,8 @@ class FitEditor:
             True if the manufacturer is from a supported platform and should
             be modified, False otherwise.
 
+        Note:
+            Supported manufacturers include: `DEVELOPMENT` (TrainingPeaks Virtual),
             `ZWIFT`, `WAHOO_FITNESS`, `PEAKSWARE`, `HAMMERHEAD`, `COROS`, `MYWHOOSH` (`331`),
             and `ONELAP` (`307`).
         """
@@ -272,7 +278,7 @@ class FitEditor:
             Manufacturer.HAMMERHEAD.value,
             Manufacturer.COROS.value,
             331,  # MYWHOOSH is unknown to fit_tools
-            307,  # ONELAP
+            Manufacturer.ONELAP.value,
         ]
 
     def _should_modify_device_info(self, manufacturer: int | None) -> bool:
@@ -304,7 +310,7 @@ class FitEditor:
             Manufacturer.HAMMERHEAD.value,
             Manufacturer.COROS.value,
             331,  # MYWHOOSH is unknown to fit_tools
-            307,  # ONELAP
+            Manufacturer.ONELAP.value,
         ]
 
     def strip_unknown_fields(self, fit_file: FitFile) -> None:
@@ -456,6 +462,14 @@ class FitEditor:
 
         # Collect Activity messages to write at the end (fixes COROS file ordering)
         activity_messages = []
+        
+        # Pre-scan for source manufacturer to handle platform-specific rules (like skipping Onelap software messages)
+        is_onelap = False
+        for record in fit_file.records:
+            if record.message.global_id == FileIdMessage.ID and isinstance(record.message, FileIdMessage):
+                if record.message.manufacturer == Manufacturer.ONELAP.value:
+                    is_onelap = True
+                break
 
         # Loop through records, find the ones we need to change, and modify the values
         for i, record in enumerate(fit_file.records):
@@ -491,8 +505,8 @@ class FitEditor:
                 # Skip any existing file creator message
                 continue
 
-            # Software message (35) - skip to remove original software info
-            if message.global_id == 35:
+            # Software message - skip to remove original software info
+            if message.global_id == SoftwareMessage.ID and is_onelap:
                 _logger.debug(f"Skipping Software message at record {i}")
                 continue
 

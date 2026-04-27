@@ -284,9 +284,8 @@ class OnelapDetector(AppDetector):
     def get_default_path(self) -> Path | None:
         """Detect Onelap FIT files directory.
 
-        Onelap stores FIT files in specific locations:
-        - macOS: ~/Documents/Onelap/Activity/
-        - Windows: ~/Documents/Onelap/Activity/
+        Onelap stores FIT files in the same relative path on both macOS and Windows:
+        - ~/Documents/Onelap/Activity/
         
         Note: The actual path might vary slightly depending on version.
         """
