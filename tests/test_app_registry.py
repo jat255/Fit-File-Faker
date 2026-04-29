@@ -211,17 +211,13 @@ class TestMyWhooshDetector:
 
 
 class TestOnelapDetector:
-    """Tests for Onelap detector platform-specific paths."""
+    """Tests for Onelap detector path detection."""
 
-    def test_get_default_path_macos(self, monkeypatch, tmp_path):
-        """Test Onelap default path detection on macOS."""
-        monkeypatch.setattr("sys.platform", "darwin")
-
-        # Create mock Onelap directory
+    def test_get_default_path_english(self, monkeypatch, tmp_path):
+        """Test Onelap default path detection with English locale directory."""
         onelap_dir = tmp_path / "Documents" / "Onelap" / "Activity"
         onelap_dir.mkdir(parents=True)
 
-        # Mock Path.home() to return our tmp_path
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
         detector = OnelapDetector()
@@ -229,37 +225,33 @@ class TestOnelapDetector:
 
         assert result == onelap_dir
 
-    def test_get_default_path_windows(self, monkeypatch, tmp_path):
-        """Test Onelap default path detection on Windows."""
-        monkeypatch.setattr("sys.platform", "win32")
-
-        # Create mock Onelap Windows directory
-        onelap_dir = tmp_path / "Documents" / "Onelap" / "Activity"
-        onelap_dir.mkdir(parents=True)
-
-        # Mock Path.home() to return our tmp_path
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-
-        detector = OnelapDetector()
-        result = detector.get_default_path()
-
-        assert result == onelap_dir
-
-    def test_get_default_path_fallback(self, monkeypatch, tmp_path):
-        """Test Onelap fallback path detection."""
-        monkeypatch.setattr("sys.platform", "win32")
-
-        # Create mock Onelap fallback directory
+    def test_get_default_path_chinese_locale(self, monkeypatch, tmp_path):
+        """Test Onelap fallback path detection with Chinese locale directory."""
         onelap_dir = tmp_path / "Documents" / "顽鹿运动" / "Activity"
         onelap_dir.mkdir(parents=True)
 
-        # Mock Path.home() to return our tmp_path
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
         detector = OnelapDetector()
         result = detector.get_default_path()
 
         assert result == onelap_dir
+
+    def test_get_default_path_english_preferred_over_chinese(
+        self, monkeypatch, tmp_path
+    ):
+        """Test that English locale path is returned when both paths exist."""
+        english_dir = tmp_path / "Documents" / "Onelap" / "Activity"
+        chinese_dir = tmp_path / "Documents" / "顽鹿运动" / "Activity"
+        english_dir.mkdir(parents=True)
+        chinese_dir.mkdir(parents=True)
+
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        detector = OnelapDetector()
+        result = detector.get_default_path()
+
+        assert result == english_dir
 
 
 class TestCustomDetector:
