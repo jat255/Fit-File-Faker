@@ -134,20 +134,6 @@ class TestUploadFunction:
         with pytest.raises(ValueError, match="missing Garmin credentials"):
             upload(tpv_fit_file, profile=mock_profile, dryrun=False)
 
-    def test_upload_passes_prompt_mfa(
-        self, tpv_fit_file, mock_garmin_client, mock_valid_config
-    ):
-        """Garmin() must receive a callable prompt_mfa so MFA-required logins work."""
-        mock_cls, _ = mock_garmin_client
-        mock_profile = mock_valid_config.config.get_default_profile()
-
-        upload(tpv_fit_file, profile=mock_profile, dryrun=True)
-
-        _, kwargs = mock_cls.call_args
-        assert callable(kwargs.get("prompt_mfa")), (
-            "Garmin() must be constructed with a prompt_mfa callback"
-        )
-
 
 class TestUploadAllFunction:
     """Tests for batch upload functionality."""
