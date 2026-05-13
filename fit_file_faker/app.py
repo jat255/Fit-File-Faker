@@ -209,7 +209,9 @@ class NewFileEventHandler(PatternMatchingEventHandler):
                 source_file = Path(p).absolute()
 
                 # Edit the file and upload it
-                with NamedTemporaryFile(delete=True, delete_on_close=False) as fp:
+                with NamedTemporaryFile(
+                    delete=True, delete_on_close=False, suffix=".fit"
+                ) as fp:
                     fit_editor.set_profile(self.profile)
                     output = fit_editor.edit_fit(source_file, output=Path(fp.name))
                     if output:
@@ -291,7 +293,20 @@ def upload(
             "Run with --config-menu to update the profile."
         )
 
-    client = Garmin(email, password)
+    def _prompt_mfa() -> str:
+        _logger.info(
+            "Garmin Connect requires a multi-factor authentication code "
+            "(check your email or authenticator app)"
+        )
+        return (
+            questionary.text(
+                "MFA code:",
+                validate=lambda v: bool(v.strip()) or "MFA code cannot be empty",
+            ).ask()
+            or ""
+        )
+
+    client = Garmin(email, password, prompt_mfa=_prompt_mfa)
     _logger.info("Authenticating to Garmin Connect")
     client.login(tokenstore=str(token_dir))
 
@@ -379,7 +394,9 @@ def upload_all(
         _logger.info(f'Processing "{f}"')  # type: ignore
 
         if not preinitialize:
-            with NamedTemporaryFile(delete=True, delete_on_close=False) as fp:
+            with NamedTemporaryFile(
+                delete=True, delete_on_close=False, suffix=".fit"
+            ) as fp:
                 fit_editor.set_profile(profile)
                 output = fit_editor.edit_fit(dir.joinpath(f), output=Path(fp.name))
                 if output:
