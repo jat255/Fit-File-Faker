@@ -30,6 +30,45 @@ warn() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
 
+validate_changelog_commit_subjects() {
+    local previous_tag
+    previous_tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)
+
+    if [ -z "$previous_tag" ]; then
+        warn "No previous release tag found; skipping git-cliff commit subject validation."
+        return 0
+    fi
+
+    local invalid_commits=""
+    while IFS=$'\t' read -r commit_hash subject; do
+        if [[ "$subject" =~ ^docs:\ update\ changelog ]] ||
+           [[ "$subject" =~ ^chore:\ bump\ version ]] ||
+           [[ "$subject" =~ ^chore\(release\):\ prepare\ for ]] ||
+           [[ "$subject" =~ ^chore\(deps\) ]] ||
+           [[ "$subject" =~ ^chore\(pr\) ]] ||
+           [[ "$subject" =~ ^chore\(pull\) ]]; then
+            continue
+        fi
+
+        if [[ "$subject" =~ ^(feat|fix|minor-feat|docs|perf|refactor|style|test|chore|ci|build|revert)(\([A-Za-z0-9._-]+\))?(!)?:\ .+ ]]; then
+            continue
+        fi
+
+        invalid_commits+="${commit_hash} ${subject}"$'\n'
+    done < <(git log --format='%h%x09%s' "${previous_tag}..HEAD")
+
+    if [ -n "$invalid_commits" ]; then
+        echo -e "${RED}Error: The following commits do not match git-cliff commit parser requirements:${NC}" >&2
+        echo >&2
+        echo "$invalid_commits" >&2
+        echo "Use Conventional Commits subjects so release notes include every relevant change." >&2
+        echo "Example: fix: preserve .fit suffix for monitor mode uploads" >&2
+        exit 1
+    fi
+
+    success "All commits since ${previous_tag} match git-cliff commit parser requirements"
+}
+
 show_help() {
     echo -e "${GREEN}FIT File Faker Release Script${NC}"
     echo
@@ -120,6 +159,8 @@ fi
 if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
     error "Tag v${VERSION} already exists. Use a different version."
 fi
+
+validate_changelog_commit_subjects
 
 info "Preparing release v${VERSION}..."
 echo

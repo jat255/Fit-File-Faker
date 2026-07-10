@@ -7,6 +7,11 @@ See our [release history](https://github.com/jat255/Fit-File-Faker/releases) on 
 
 ## [2.2.0](https://github.com/jat255/fit-file-faker/releases/tag/v2.2.0) - (2026-07-10)
 
+### Bug Fixes
+
+- Support Garmin MFA login and add .fit suffix to temp upload files ([#82](https://github.com/jat255/fit-file-faker/issues/82)) ([bfa034c](https://github.com/jat255/Fit-File-Faker/commit/bfa034c0f176dbddd5c918c86aed768002245eb9))
+
+
 ### Documentation
 
 - move agent guidance to AGENTS.md ([79750d3](https://github.com/jat255/Fit-File-Faker/commit/79750d3cde33645cf11fd6f43a899d7390e87b1e))

@@ -373,6 +373,7 @@ ALL commits MUST follow the [Conventional Commits](https://www.conventionalcommi
 - Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `ci`, `build`, `perf`, `style`, `revert`, `plan`
 - This is enforced by pre-commit hooks (commitlint) and required for automatic changelog generation
 - **Never** create commits that don't follow this format
+- Before preparing a release, inspect every commit since the previous tag and confirm each subject matches the conventional format. Use `git log --format='%h %s' <previous-tag>..HEAD` and flag any non-conforming subject before relying on `git-cliff` output.
 
 When making changes:
 1. Run tests locally: `python3 run_tests.py --html`
