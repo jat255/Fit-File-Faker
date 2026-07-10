@@ -462,7 +462,7 @@ class FitEditor:
 
         # Collect Activity messages to write at the end (fixes COROS file ordering)
         activity_messages = []
-        
+
         # Pre-scan for source manufacturer to handle platform-specific rules (like skipping Onelap software messages)
         is_onelap = False
         for record in fit_file.records:

@@ -607,6 +607,7 @@ class AppType(Enum):
         TP_VIRTUAL: TrainingPeaks Virtual (formerly indieVelo)
         ZWIFT: Zwift virtual cycling platform
         MYWHOOSH: MyWhoosh virtual cycling platform
+        ONELAP: Onelap virtual cycling platform
         CUSTOM: Custom/manual path specification
     """
 
