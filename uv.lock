@@ -335,7 +335,7 @@ wheels = [
 
 [[package]]
 name = "fit-file-faker"
-version = "2.1.5"
+version = "2.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "bitstruct" },
