@@ -5,6 +5,17 @@ All notable changes to FIT File Faker are documented here.
 This changelog is automatically generated from git commit messages using [git-cliff](https://git-cliff.org/).
 See our [release history](https://github.com/jat255/Fit-File-Faker/releases) on GitHub for downloadable releases.
 
+## [2.2.0](https://github.com/jat255/fit-file-faker/releases/tag/v2.2.0) - (2026-07-10)
+
+### Documentation
+
+- move agent guidance to AGENTS.md ([79750d3](https://github.com/jat255/Fit-File-Faker/commit/79750d3cde33645cf11fd6f43a899d7390e87b1e))
+
+
+### Styling
+
+- format Onelap support changes ([0ab0b34](https://github.com/jat255/Fit-File-Faker/commit/0ab0b344ea3602fbf85ed76adad008d018fa26e7))
+
 ## [2.1.5](https://github.com/jat255/fit-file-faker/releases/tag/v2.1.5) - (2026-04-27)
 
 ### Features
