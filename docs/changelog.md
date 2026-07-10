@@ -5,12 +5,13 @@ All notable changes to FIT File Faker are documented here.
 This changelog is automatically generated from git commit messages using [git-cliff](https://git-cliff.org/).
 See our [release history](https://github.com/jat255/Fit-File-Faker/releases) on GitHub for downloadable releases.
 
-## [2.2.0](https://github.com/jat255/fit-file-faker/releases/tag/v2.2.0) - (2026-07-10)
+## [2.2.1](https://github.com/jat255/fit-file-faker/releases/tag/v2.2.1) - (2026-07-10)
 
 ### Bug Fixes
 
-- Support Garmin MFA login and add .fit suffix to temp upload files ([#82](https://github.com/jat255/fit-file-faker/issues/82)) ([bfa034c](https://github.com/jat255/Fit-File-Faker/commit/bfa034c0f176dbddd5c918c86aed768002245eb9))
+- validate release changelog commit subjects ([d6aa0ec](https://github.com/jat255/Fit-File-Faker/commit/d6aa0ecc72a2609e42c39164fbff3aabdea9b0c2))
 
+## [2.2.0](https://github.com/jat255/fit-file-faker/releases/tag/v2.2.0) - (2026-07-10)
 
 ### Documentation
 
