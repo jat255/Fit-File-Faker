@@ -60,7 +60,7 @@ def test_release_script_rejects_commit_subjects_git_cliff_will_not_render(
     env = os.environ.copy()
     env["UV_CACHE_DIR"] = str(tmp_path / "uv-cache")
     result = subprocess.run(
-        ["./release.sh", "2.2.0"],
+        ["bash", "release.sh", "2.2.0"],
         cwd=repo,
         input="n\n",
         capture_output=True,
