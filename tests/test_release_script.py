@@ -8,6 +8,21 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
+
+def require_usable_bash() -> str:
+    """Return a bash executable path, or skip when this host cannot run shell tests."""
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("bash is not available")
+
+    result = subprocess.run([bash, "--version"], capture_output=True, text=True)
+    if result.returncode != 0:
+        pytest.skip("bash is present but not usable")
+
+    return bash
+
 
 def run_git(repo: Path, *args: str) -> None:
     """Run a git command in the temporary release repository."""
@@ -52,6 +67,7 @@ def test_release_script_rejects_commit_subjects_git_cliff_will_not_render(
     tmp_path: Path,
 ) -> None:
     """Abort before release mutation when a commit subject cannot appear in git-cliff."""
+    bash = require_usable_bash()
     repo = create_release_repo(tmp_path)
     (repo / "change.txt").write_text("change\n")
     run_git(repo, "add", "change.txt")
@@ -60,7 +76,7 @@ def test_release_script_rejects_commit_subjects_git_cliff_will_not_render(
     env = os.environ.copy()
     env["UV_CACHE_DIR"] = str(tmp_path / "uv-cache")
     result = subprocess.run(
-        ["bash", "release.sh", "2.2.0"],
+        [bash, "release.sh", "2.2.0"],
         cwd=repo,
         input="n\n",
         capture_output=True,
