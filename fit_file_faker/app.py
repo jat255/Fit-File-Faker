@@ -33,6 +33,7 @@ from importlib.metadata import version
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional, cast
+from hashlib import sha256
 
 import questionary
 import semver
@@ -232,12 +233,19 @@ class NewFileEventHandler(PatternMatchingEventHandler):
                             with uploaded_list.open("r") as f:
                                 uploaded_files = json.load(f)
 
-                        filename = source_file.name
-                        if filename not in uploaded_files:
-                            uploaded_files.append(filename)
+                        file = {
+                            "name": source_file.name,
+                            "hash": sha256(
+                                open(dir.joinpath(source_file.name), "rb").read()
+                            ).hexdigest(),
+                        }
+                        if file not in uploaded_files:
+                            uploaded_files.append(file)
                             with uploaded_list.open("w") as f:
                                 json.dump(uploaded_files, f, indent=2)
-                            _logger.debug(f'Added "{filename}" to uploaded files list')
+                            _logger.debug(
+                                f'Added "{file["name"]}" with hash "{file["hash"]}" to uploaded files list'
+                            )
             else:
                 _logger.warning(
                     "Found modified file, but not processing because dryrun was requested"
@@ -381,6 +389,11 @@ def upload_all(
     files = [i.replace(str(dir), "").strip("/").strip("\\") for i in files]
     # remove files matching what we may have already processed
     files = [i for i in files if not i.endswith("_modified.fit")]
+    # append file hash for each file
+    files = [
+        {"name": i, "hash": sha256(open(dir.joinpath(i), "rb").read()).hexdigest()}
+        for i in files
+    ]
     # remove files found in the "already uploaded" list
     files = [i for i in files if i not in uploaded_files]
 
@@ -391,20 +404,27 @@ def upload_all(
         return
 
     for f in files:
-        _logger.info(f'Processing "{f}"')  # type: ignore
+        _logger.info(f'Processing "{f["name"]}"')  # type: ignore
+
+        f_path = dir.joinpath(f["name"])
 
         if not preinitialize:
             with NamedTemporaryFile(
                 delete=True, delete_on_close=False, suffix=".fit"
             ) as fp:
                 fit_editor.set_profile(profile)
-                output = fit_editor.edit_fit(dir.joinpath(f), output=Path(fp.name))
+                output = fit_editor.edit_fit(f_path, output=Path(fp.name))
                 if output:
                     _logger.info("Uploading modified file to Garmin Connect")
                     upload(
-                        output, profile=profile, original_path=Path(f), dryrun=dryrun
+                        output,
+                        profile=profile,
+                        original_path=Path(f["name"]),
+                        dryrun=dryrun,
                     )
-                    _logger.debug(f'Adding "{f}" to "uploaded_files"')
+                    _logger.debug(
+                        f'Adding "{f["name"]}" with hash "{f["hash"]}" to "uploaded_files"'
+                    )
         else:
             _logger.info(
                 "Preinitialize was requested, so just marking as uploaded (not actually processing)"
