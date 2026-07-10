@@ -90,6 +90,7 @@ def mywhoosh_fit_file(test_files_dir):
     """Return path to MyWhoosh test FIT file."""
     return test_files_dir / "mywhoosh_20260111.fit"
 
+
 @pytest.fixture(scope="module")
 def onelap_fit_file(test_files_dir):
     """Return path to Onelap test FIT file."""
@@ -122,7 +123,12 @@ def zwift_non_utf8_fit_file(test_files_dir):
 
 @pytest.fixture(scope="module")
 def all_test_fit_files(
-    tpv_fit_file, zwift_fit_file, mywhoosh_fit_file, onelap_fit_file, karoo_fit_file, coros_fit_file
+    tpv_fit_file,
+    zwift_fit_file,
+    mywhoosh_fit_file,
+    onelap_fit_file,
+    karoo_fit_file,
+    coros_fit_file,
 ):
     """Return all test FIT files."""
     return [
@@ -178,6 +184,7 @@ def zwift_fit_parsed(zwift_fit_file):
 def mywhoosh_fit_parsed(mywhoosh_fit_file):
     """Return parsed MyWhoosh FIT file."""
     return FitFile.from_file(str(mywhoosh_fit_file))
+
 
 @pytest.fixture
 def onelap_fit_parsed(onelap_fit_file):

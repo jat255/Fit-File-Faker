@@ -466,7 +466,9 @@ class FitEditor:
         # Pre-scan for source manufacturer to handle platform-specific rules (like skipping Onelap software messages)
         is_onelap = False
         for record in fit_file.records:
-            if record.message.global_id == FileIdMessage.ID and isinstance(record.message, FileIdMessage):
+            if record.message.global_id == FileIdMessage.ID and isinstance(
+                record.message, FileIdMessage
+            ):
                 if record.message.manufacturer == Manufacturer.ONELAP.value:
                     is_onelap = True
                 break
