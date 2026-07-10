@@ -270,6 +270,41 @@ class MyWhooshDetector(AppDetector):
         return path.exists() and path.is_dir()
 
 
+class OnelapDetector(AppDetector):
+    """Onelap (顽鹿运动) directory detector."""
+
+    def get_display_name(self) -> str:
+        """Get human-readable app name."""
+        return "Onelap (顽鹿运动)"
+
+    def get_short_name(self) -> str:
+        """Get short app name for compact display."""
+        return "Onelap"
+
+    def get_default_path(self) -> Path | None:
+        """Detect Onelap FIT files directory.
+
+        Detection is not platform-specific -- checks for the English path first,
+        then falls back to the Chinese locale path:
+        - ~/Documents/Onelap/Activity/  (English locale)
+        - ~/Documents/顽鹿运动/Activity/  (Chinese locale fallback)
+        """
+        base = Path.home() / "Documents" / "Onelap" / "Activity"
+        if base.exists():
+            return base
+
+        # Fallback for older versions or different locales
+        alternate = Path.home() / "Documents" / "顽鹿运动" / "Activity"
+        if alternate.exists():
+            return alternate
+
+        return None
+
+    def validate_path(self, path: Path) -> bool:
+        """Check if path looks like Onelap directory."""
+        return path.exists() and path.is_dir()
+
+
 class CustomDetector(AppDetector):
     """Custom/manual path specification detector."""
 
@@ -301,6 +336,7 @@ APP_REGISTRY: dict[AppType, type[AppDetector]] = {
     AppType.TP_VIRTUAL: TPVDetector,
     AppType.ZWIFT: ZwiftDetector,
     AppType.MYWHOOSH: MyWhooshDetector,
+    AppType.ONELAP: OnelapDetector,
     AppType.CUSTOM: CustomDetector,
 }
 

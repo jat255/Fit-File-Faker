@@ -36,6 +36,9 @@ from fit_file_faker.vendor.fit_tool.profile.messages.file_creator_message import
 from fit_file_faker.vendor.fit_tool.profile.messages.file_id_message import (
     FileIdMessage,
 )
+from fit_file_faker.vendor.fit_tool.profile.messages.software_message import (
+    SoftwareMessage,
+)
 from fit_file_faker.vendor.fit_tool.profile.profile_type import (
     GarminProduct,
     Manufacturer,
@@ -210,7 +213,7 @@ class FitEditor:
             The product_name field is intentionally not copied as Garmin devices
             typically don't set this field. Only files from supported manufacturers
             (`DEVELOPMENT`, `ZWIFT`, `WAHOO_FITNESS`, `PEAKSWARE`, `HAMMERHEAD`, `COROS`,
-            `MYWHOOSH`) are modified; others are returned unchanged.
+            `MYWHOOSH` (`331`), and `ONELAP` (`307`)) are modified; others are returned unchanged.
         """
         dt = datetime.fromtimestamp(m.time_created / 1000.0)  # type: ignore
         _logger.info(f'Activity timestamp is "{dt.isoformat()}"')
@@ -262,8 +265,8 @@ class FitEditor:
 
         Note:
             Supported manufacturers include: `DEVELOPMENT` (TrainingPeaks Virtual),
-            `ZWIFT`, `WAHOO_FITNESS`, `PEAKSWARE`, `HAMMERHEAD`, `COROS`, and
-            `MYWHOOSH` (`331`).
+            `ZWIFT`, `WAHOO_FITNESS`, `PEAKSWARE`, `HAMMERHEAD`, `COROS`, `MYWHOOSH` (`331`),
+            and `ONELAP` (`307`).
         """
         if manufacturer is None:
             return False
@@ -275,6 +278,7 @@ class FitEditor:
             Manufacturer.HAMMERHEAD.value,
             Manufacturer.COROS.value,
             331,  # MYWHOOSH is unknown to fit_tools
+            Manufacturer.ONELAP.value,
         ]
 
     def _should_modify_device_info(self, manufacturer: int | None) -> bool:
@@ -306,6 +310,7 @@ class FitEditor:
             Manufacturer.HAMMERHEAD.value,
             Manufacturer.COROS.value,
             331,  # MYWHOOSH is unknown to fit_tools
+            Manufacturer.ONELAP.value,
         ]
 
     def strip_unknown_fields(self, fit_file: FitFile) -> None:
@@ -458,6 +463,14 @@ class FitEditor:
         # Collect Activity messages to write at the end (fixes COROS file ordering)
         activity_messages = []
 
+        # Pre-scan for source manufacturer to handle platform-specific rules (like skipping Onelap software messages)
+        is_onelap = False
+        for record in fit_file.records:
+            if record.message.global_id == FileIdMessage.ID and isinstance(record.message, FileIdMessage):
+                if record.message.manufacturer == Manufacturer.ONELAP.value:
+                    is_onelap = True
+                break
+
         # Loop through records, find the ones we need to change, and modify the values
         for i, record in enumerate(fit_file.records):
             message = record.message
@@ -492,6 +505,11 @@ class FitEditor:
                 # Skip any existing file creator message
                 continue
 
+            # Software message - skip to remove original software info
+            if message.global_id == SoftwareMessage.ID and is_onelap:
+                _logger.debug(f"Skipping Software message at record {i}")
+                continue
+
             # Change device info messages
             if message.global_id == DeviceInfoMessage.ID:
                 if isinstance(message, DeviceInfoMessage):
@@ -522,11 +540,11 @@ class FitEditor:
                             target_device = GarminProduct.EDGE_830.value
 
                         # have not seen this set explicitly in testing, but probable good to set regardless
-                        if message.garmin_product:  # pragma: no cover
+                        if message.garmin_product is not None:  # pragma: no cover
                             message.garmin_product = target_device
-                        if message.product:
+                        if message.product is not None:
                             message.product = target_device  # type: ignore
-                        if message.manufacturer:
+                        if message.manufacturer is not None:
                             message.manufacturer = target_manufacturer
                         message.product_name = ""
                         self.print_message(f"    New Record: {i}", message)
