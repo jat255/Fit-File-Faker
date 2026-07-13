@@ -459,3 +459,77 @@ class TestCustomDeviceSimulation:
                 break
 
         assert file_creator_found, "FileCreatorMessage not found in modified file"
+
+
+class TestCalorieRecalculation:
+    """End-to-end tests for the profile-driven calorie recalculation feature."""
+
+    @staticmethod
+    def _session_total(fit_path):
+        from fit_file_faker.vendor.fit_tool.profile.messages.session_message import (
+            SessionMessage,
+        )
+
+        modified = FitFile.from_file(str(fit_path))
+        for record in modified.records:
+            if isinstance(record.message, SessionMessage):
+                return record.message.total_calories
+        return None
+
+    @pytest.mark.slow
+    def test_karoo_gets_calories_added_when_enabled(self, karoo_fit_parsed, temp_dir):
+        """Karoo files miss `total_calories`; with the flag on we should fill it."""
+        from fit_file_faker.config import AppType, Profile
+
+        profile = Profile(
+            name="karoo",
+            app_type=AppType.CUSTOM,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            recalculate_calories=True,
+            weight_kg=75.0,
+            age=35,
+            sex="male",
+        )
+        editor = FitEditor(profile=profile)
+        output_file = temp_dir / "karoo_with_kcal.fit"
+
+        result = editor.edit_fit(karoo_fit_parsed, output=output_file)
+        assert result == output_file
+
+        total = self._session_total(output_file)
+        assert total is not None and total > 0, (
+            "Expected calorie recalculation to populate SessionMessage.total_calories"
+        )
+
+    @pytest.mark.slow
+    def test_existing_calories_not_overwritten(self, zwift_fit_parsed, temp_dir):
+        """If the source already has session calories, recalculation must not clobber it."""
+        from fit_file_faker.config import AppType, Profile
+        from fit_file_faker.vendor.fit_tool.profile.messages.session_message import (
+            SessionMessage,
+        )
+
+        original_total = None
+        for rec in zwift_fit_parsed.records:
+            if isinstance(rec.message, SessionMessage):
+                original_total = rec.message.total_calories
+                break
+        if not original_total:
+            pytest.skip("Zwift fixture has no existing session calories")
+
+        profile = Profile(
+            name="zwift",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            recalculate_calories=True,
+        )
+        editor = FitEditor(profile=profile)
+        output_file = temp_dir / "zwift_kcal_untouched.fit"
+
+        editor.edit_fit(zwift_fit_parsed, output=output_file)
+
+        assert self._session_total(output_file) == original_total

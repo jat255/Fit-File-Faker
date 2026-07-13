@@ -904,6 +904,50 @@ class TestProfile:
         assert profile.app_type == AppType.MYWHOOSH
         assert profile.fitfiles_path == Path("/path/to/fitfiles")
 
+    def test_profile_calorie_fields_default_off(self):
+        """New calorie-related fields default to off / None."""
+        profile = Profile(
+            name="test",
+            app_type=AppType.ZWIFT,
+            garmin_username="u@x",
+            garmin_password="p",
+            fitfiles_path=Path("/x"),
+        )
+        assert profile.recalculate_calories is False
+        assert profile.weight_kg is None
+        assert profile.age is None
+        assert profile.sex is None
+
+    def test_profile_calorie_fields_set(self):
+        profile = Profile(
+            name="karoo",
+            app_type=AppType.CUSTOM,
+            garmin_username="u@x",
+            garmin_password="p",
+            fitfiles_path=Path("/x"),
+            recalculate_calories=True,
+            weight_kg=72.5,
+            age=34,
+            sex="female",
+        )
+        assert profile.recalculate_calories is True
+        assert profile.weight_kg == 72.5
+        assert profile.age == 34
+        assert profile.sex == "female"
+
+    def test_profile_legacy_dict_without_calorie_fields_uses_defaults(self):
+        """Old configs (no kcal keys) must still deserialize cleanly."""
+        legacy_dict = {
+            "name": "old",
+            "app_type": "zwift",
+            "garmin_username": "u@x",
+            "garmin_password": "p",
+            "fitfiles_path": "/x",
+        }
+        profile = Profile(**legacy_dict)
+        assert profile.recalculate_calories is False
+        assert profile.weight_kg is None
+
 
 class TestConfigMultiProfile:
     """Tests for Config multi-profile functionality."""
@@ -1260,6 +1304,50 @@ class TestProfileManager:
         profile = manager.get_profile("test")
         assert profile.garmin_username == "new@example.com"
 
+    def test_update_profile_explicit_none_clears_hr_inputs(self, manager):
+        """Test that passing None explicitly clears weight/age/sex."""
+        manager.create_profile(
+            "test",
+            AppType.ZWIFT,
+            "user@example.com",
+            "secret",
+            Path("/path"),
+            recalculate_calories=True,
+            weight_kg=75.0,
+            age=40,
+            sex="male",
+        )
+
+        manager.update_profile("test", weight_kg=None, age=None, sex=None)
+
+        profile = manager.get_profile("test")
+        assert profile.weight_kg is None
+        assert profile.age is None
+        assert profile.sex is None
+        # recalculate_calories was not passed, so it must be untouched
+        assert profile.recalculate_calories is True
+
+    def test_update_profile_omitted_hr_inputs_are_kept(self, manager):
+        """Test that omitting weight/age/sex leaves stored values untouched."""
+        manager.create_profile(
+            "test",
+            AppType.ZWIFT,
+            "user@example.com",
+            "secret",
+            Path("/path"),
+            recalculate_calories=True,
+            weight_kg=75.0,
+            age=40,
+            sex="male",
+        )
+
+        manager.update_profile("test", garmin_username="new@example.com")
+
+        profile = manager.get_profile("test")
+        assert profile.weight_kg == 75.0
+        assert profile.age == 40
+        assert profile.sex == "male"
+
     def test_update_profile_name(self, manager):
         """Test renaming a profile."""
         manager.create_profile(
@@ -1389,8 +1477,10 @@ class TestProfileManager:
         with pytest.raises(ValueError, match='Profile "nonexistent" not found'):
             manager.set_default_profile("nonexistent")
 
-    def test_display_profiles_table_with_profiles(self, manager, capsys):
+    def test_display_profiles_table_with_profiles(self, manager, capsys, monkeypatch):
         """Test display_profiles_table shows profiles in table format."""
+        # Widen the (non-tty) console so Rich doesn't truncate cell contents
+        monkeypatch.setenv("COLUMNS", "200")
         # Add a couple of profiles
         manager.create_profile(
             name="profile1",
@@ -1405,6 +1495,7 @@ class TestProfileManager:
             garmin_username="user2@example.com",
             garmin_password="pass2",
             fitfiles_path=Path("/path/to/fit2"),
+            recalculate_calories=True,
         )
         manager.set_default_profile("profile1")
 
@@ -1419,6 +1510,9 @@ class TestProfileManager:
         assert "⭐" in output  # Default profile marker
         assert "Zwift" in output
         assert "TPVirtual" in output  # Title case combined without spaces
+        assert "Kcal" in output  # Calorie recalculation column header
+        assert "✓" in output  # profile2 has recalculation enabled
+        assert "—" in output  # profile1 does not
 
     def test_display_profiles_table_empty(self, manager, capsys):
         """Test display_profiles_table with no profiles."""
@@ -1905,7 +1999,10 @@ class TestProfileManagerWizards:
 
         def mock_confirm(prompt, **kwargs):
             call_count["confirm"] += 1
-            # Confirm using detected directory
+            # Calorie recalculation step: keep this test focused on path/credentials.
+            if "calorie" in prompt.lower():
+                return MockQuestion(False)
+            # Confirm using detected directory and other prompts
             return MockQuestion(True)
 
         def mock_text(prompt, **kwargs):
@@ -2267,6 +2364,8 @@ class TestProfileManagerWizards:
             return MockQuestion(choices[0])
 
         def mock_confirm(prompt, **kwargs):
+            if "calorie" in prompt.lower():
+                return MockQuestion(False)
             return MockQuestion(True)
 
         def mock_text(prompt, **kwargs):
@@ -2402,6 +2501,101 @@ class TestProfileManagerWizards:
 
         captured = capsys.readouterr()
         assert "updated successfully" in captured.out
+
+    def test_edit_profile_wizard_removes_hr_inputs(
+        self, manager_with_profiles, monkeypatch, capsys
+    ):
+        """Answering No to keeping weight/age/sex clears them from the profile."""
+        manager_with_profiles.update_profile(
+            "profile1",
+            recalculate_calories=True,
+            weight_kg=75.0,
+            age=40,
+            sex="male",
+        )
+
+        def mock_select(prompt, choices, **kwargs):
+            return MockQuestion("profile1")
+
+        def mock_text(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_path(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit calorie recalculation settings" in prompt:
+                return MockQuestion(True)
+            if "Enable calorie recalculation" in prompt:
+                return MockQuestion(True)
+            if "weight/age/sex" in prompt:
+                return MockQuestion(False)
+            return MockQuestion(False)
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "path", mock_path)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+
+        manager_with_profiles.edit_profile_wizard()
+
+        profile = manager_with_profiles.get_profile("profile1")
+        assert profile.recalculate_calories is True
+        assert profile.weight_kg is None
+        assert profile.age is None
+        assert profile.sex is None
+
+        captured = capsys.readouterr()
+        assert "updated successfully" in captured.out
+
+    def test_edit_profile_wizard_disable_calories_keeps_hr_inputs(
+        self, manager_with_profiles, monkeypatch, capsys
+    ):
+        """Disabling recalculation keeps stored weight/age/sex for later re-enable."""
+        manager_with_profiles.update_profile(
+            "profile1",
+            recalculate_calories=True,
+            weight_kg=75.0,
+            age=40,
+            sex="male",
+        )
+
+        def mock_select(prompt, choices, **kwargs):
+            return MockQuestion("profile1")
+
+        def mock_text(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_path(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit calorie recalculation settings" in prompt:
+                return MockQuestion(True)
+            if "Enable calorie recalculation" in prompt:
+                return MockQuestion(False)
+            return MockQuestion(False)
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "path", mock_path)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+
+        manager_with_profiles.edit_profile_wizard()
+
+        profile = manager_with_profiles.get_profile("profile1")
+        assert profile.recalculate_calories is False
+        assert profile.weight_kg == 75.0
+        assert profile.age == 40
+        assert profile.sex == "male"
 
     def test_edit_profile_wizard_handles_error(
         self, manager_with_profiles, monkeypatch, capsys
