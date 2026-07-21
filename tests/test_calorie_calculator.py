@@ -172,6 +172,84 @@ class TestCalculateFromRecords:
         assert sum(result.per_lap_calories) == result.total_calories
         assert result.per_lap_calories[0] >= result.per_lap_calories[1]
 
+    def test_duplicate_timestamp_contributes_zero(self):
+        # Two consecutive samples with the same timestamp (dt=0) must not
+        # blow up or contribute energy for that interval.
+        records = [
+            _rec(0, power=200),
+            _rec(0, power=200),
+            _rec(10_000, power=200),
+        ]
+        result = calculate_from_records(records, laps=[], profile=_profile())
+        assert result.method == "power"
+        # Only the second interval (10 s @ 200 W) contributes: 2 kJ -> ~2 kcal.
+        assert result.total_calories == round(200 * 10 / 1000 * (1 / (0.22 * 4.184)))
+
+    def test_hr_method_skips_invalid_sample(self):
+        # HR method chosen (coverage >= 50%), but one sample in the middle
+        # reports an out-of-range HR value and must contribute zero.
+        records = [_rec(i * 1000, hr=150) for i in range(300)]
+        records.append(_rec(300_000, hr=255))  # invalid sentinel value
+        records += [_rec(i * 1000, hr=150) for i in range(301, 601)]
+        result = calculate_from_records(
+            records,
+            laps=[],
+            profile=_profile(weight_kg=70.0, age=30, sex="male"),
+        )
+        assert result.method == "hr"
+        # Should still be close to the all-valid HR estimate since only one
+        # sample's interval is dropped.
+        assert 130 <= result.total_calories <= 150
+
+    def test_keytel_female_formula_used(self):
+        records = [_rec(i * 1000, hr=140) for i in range(601)]
+        result = calculate_from_records(
+            records,
+            laps=[],
+            profile=_profile(weight_kg=60.0, age=28, sex="female"),
+        )
+        assert result.method == "hr"
+        assert result.total_calories > 0
+
+    def test_lap_missing_start_time_derives_from_elapsed(self):
+        # Lap has no start_time, but does have timestamp (end) and
+        # total_elapsed_time, so start should be derived from those.
+        records = [_rec(i * 1000, power=100) for i in range(601)]
+        laps = [_lap(None, 600_000, elapsed=600)]
+        result = calculate_from_records(records, laps=laps, profile=_profile())
+        assert len(result.per_lap_calories) == 1
+        assert result.per_lap_calories[0] == result.total_calories
+
+    def test_lap_missing_end_time_derives_from_elapsed(self):
+        # Lap has no timestamp (end), but does have start_time and
+        # total_elapsed_time, so end should be derived from those.
+        records = [_rec(i * 1000, power=100) for i in range(601)]
+        laps = [_lap(0, None, elapsed=600)]
+        result = calculate_from_records(records, laps=laps, profile=_profile())
+        assert len(result.per_lap_calories) == 1
+        assert result.per_lap_calories[0] == result.total_calories
+
+    def test_lap_missing_all_time_info_gets_empty_range(self):
+        # Lap has neither start/end nor elapsed time: falls back to an empty
+        # (0, 0) range rather than crashing, and still sums to the total.
+        records = [_rec(i * 1000, power=100) for i in range(601)]
+        laps = [_lap(None, None, elapsed=None)]
+        result = calculate_from_records(records, laps=laps, profile=_profile())
+        assert len(result.per_lap_calories) == 1
+        assert result.per_lap_calories[0] == result.total_calories
+
+    def test_sample_after_last_lap_goes_to_last_lap(self):
+        # Records extend 10 s past the final lap's end timestamp; those
+        # trailing samples must be attributed to the last lap.
+        records = [_rec(i * 1000, power=100) for i in range(611)]
+        laps = [
+            _lap(0, 300_000),
+            _lap(300_000, 600_000),
+        ]
+        result = calculate_from_records(records, laps=laps, profile=_profile())
+        assert sum(result.per_lap_calories) == result.total_calories
+        assert result.per_lap_calories[1] >= result.per_lap_calories[0]
+
 
 class TestCalorieResultDataclass:
     def test_default_field_types(self):

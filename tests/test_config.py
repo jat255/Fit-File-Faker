@@ -15,6 +15,7 @@ from fit_file_faker.config import (
     ConfigManager,
     Profile,
     ProfileManager,
+    _validate_weight,
     get_fitfiles_path,
     get_tpv_folder,
     migrate_legacy_config,
@@ -825,6 +826,24 @@ class TestGetTpvFolder:
         # Should use environment variable, not ~/TPVirtual
         assert result == Path(test_path)
         assert result != Path.home() / "TPVirtual"
+
+
+class TestValidateWeight:
+    """Tests for the _validate_weight helper used by the calorie prompt."""
+
+    def test_accepts_valid_kg(self):
+        assert _validate_weight("70", "kg") is True
+
+    def test_accepts_valid_lbs(self):
+        # 154 lbs ≈ 69.9 kg, within the 20-300 kg plausible range.
+        assert _validate_weight("154", "lbs") is True
+
+    def test_rejects_non_numeric(self):
+        assert _validate_weight("not-a-number", "kg") is False
+
+    def test_rejects_out_of_range_kg(self):
+        assert _validate_weight("10", "kg") is False
+        assert _validate_weight("500", "kg") is False
 
 
 # ==============================================================================
@@ -2596,6 +2615,148 @@ class TestProfileManagerWizards:
         assert profile.weight_kg == 75.0
         assert profile.age == 40
         assert profile.sex == "male"
+
+    def test_edit_profile_wizard_sets_hr_inputs(
+        self, manager_with_profiles, monkeypatch, capsys
+    ):
+        """Providing weight/age/sex end-to-end stores the converted values."""
+
+        def mock_select(prompt, choices, **kwargs):
+            if "Weight unit" in prompt:
+                return MockQuestion("lbs")
+            if "Sex (for Keytel formula)" in prompt:
+                return MockQuestion("female")
+            return MockQuestion("profile1")
+
+        def mock_text(prompt, **kwargs):
+            if "Body weight" in prompt:
+                return MockQuestion("154")
+            if "Age (years)" in prompt:
+                return MockQuestion("35")
+            return MockQuestion("")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_path(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit calorie recalculation settings" in prompt:
+                return MockQuestion(True)
+            if "Enable calorie recalculation" in prompt:
+                return MockQuestion(True)
+            if "weight/age/sex" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "path", mock_path)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+
+        manager_with_profiles.edit_profile_wizard()
+
+        profile = manager_with_profiles.get_profile("profile1")
+        assert profile.recalculate_calories is True
+        # 154 lbs -> ~69.9 kg
+        assert profile.weight_kg == pytest.approx(69.9, abs=0.1)
+        assert profile.age == 35
+        assert profile.sex == "female"
+
+    def test_edit_profile_wizard_cancels_weight_unit_prompt(
+        self, manager_with_profiles, monkeypatch, capsys
+    ):
+        """Cancelling the weight-unit prompt keeps existing HR inputs untouched."""
+        manager_with_profiles.update_profile(
+            "profile1",
+            recalculate_calories=True,
+            weight_kg=75.0,
+            age=40,
+            sex="male",
+        )
+
+        def mock_select(prompt, choices, **kwargs):
+            if "Weight unit" in prompt:
+                return MockQuestion(None)
+            return MockQuestion("profile1")
+
+        def mock_text(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_path(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit calorie recalculation settings" in prompt:
+                return MockQuestion(True)
+            if "Enable calorie recalculation" in prompt:
+                return MockQuestion(True)
+            if "weight/age/sex" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "path", mock_path)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+
+        manager_with_profiles.edit_profile_wizard()
+
+        profile = manager_with_profiles.get_profile("profile1")
+        assert profile.weight_kg == 75.0
+        assert profile.age == 40
+        assert profile.sex == "male"
+
+    def test_edit_profile_wizard_cancels_age_prompt(
+        self, manager_with_profiles, monkeypatch, capsys
+    ):
+        """Cancelling the age prompt keeps the current age/sex but stores the new weight."""
+
+        def mock_select(prompt, choices, **kwargs):
+            if "Weight unit" in prompt:
+                return MockQuestion("kg")
+            return MockQuestion("profile1")
+
+        def mock_text(prompt, **kwargs):
+            if "Body weight" in prompt:
+                return MockQuestion("80")
+            if "Age (years)" in prompt:
+                return MockQuestion("")
+            return MockQuestion("")
+
+        def mock_password(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_path(prompt, **kwargs):
+            return MockQuestion("")
+
+        def mock_confirm(prompt, **kwargs):
+            if "Edit calorie recalculation settings" in prompt:
+                return MockQuestion(True)
+            if "Enable calorie recalculation" in prompt:
+                return MockQuestion(True)
+            if "weight/age/sex" in prompt:
+                return MockQuestion(True)
+            return MockQuestion(False)
+
+        monkeypatch.setattr(questionary, "select", mock_select)
+        monkeypatch.setattr(questionary, "text", mock_text)
+        monkeypatch.setattr(questionary, "password", mock_password)
+        monkeypatch.setattr(questionary, "path", mock_path)
+        monkeypatch.setattr(questionary, "confirm", mock_confirm)
+
+        manager_with_profiles.edit_profile_wizard()
+
+        profile = manager_with_profiles.get_profile("profile1")
+        assert profile.weight_kg == 80.0
+        assert profile.age is None
+        assert profile.sex is None
 
     def test_edit_profile_wizard_handles_error(
         self, manager_with_profiles, monkeypatch, capsys

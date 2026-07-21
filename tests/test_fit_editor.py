@@ -2,6 +2,7 @@
 Tests for the FIT file editing functionality.
 """
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -533,3 +534,53 @@ class TestCalorieRecalculation:
         editor.edit_fit(zwift_fit_parsed, output=output_file)
 
         assert self._session_total(output_file) == original_total
+
+    @pytest.mark.slow
+    def test_recalculation_skipped_logs_warning_when_method_none(
+        self, zwift_fit_parsed, temp_dir, monkeypatch, caplog
+    ):
+        """When there isn't enough data to estimate, a warning is logged."""
+        from fit_file_faker import calorie_calculator
+        from fit_file_faker.calorie_calculator import CalorieResult
+        from fit_file_faker.config import AppType, Profile
+
+        monkeypatch.setattr(
+            calorie_calculator,
+            "calculate_from_records",
+            lambda records, laps, profile: CalorieResult(
+                0, [], "none", "no power data and HR fallback inputs missing"
+            ),
+        )
+
+        profile = Profile(
+            name="zwift",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            recalculate_calories=True,
+        )
+        editor = FitEditor(profile=profile)
+        output_file = temp_dir / "zwift_kcal_skipped.fit"
+
+        with caplog.at_level(logging.WARNING):
+            editor.edit_fit(zwift_fit_parsed, output=output_file)
+
+        assert "Calorie recalculation requested but skipped" in caplog.text
+
+
+class TestInjectTotalCalories:
+    """Unit tests for the `_inject_total_calories` helper."""
+
+    def test_noop_when_field_not_present_on_message(self):
+        """A message whose definition never declared the field is left untouched."""
+        from fit_file_faker.fit_editor import _inject_total_calories
+
+        class FakeMessage:
+            def get_field(self, field_id):
+                return None
+
+        message = FakeMessage()
+        _inject_total_calories(message, 42)
+
+        assert not hasattr(message, "total_calories")
