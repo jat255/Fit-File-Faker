@@ -24,6 +24,8 @@ A Python tool to modify [FIT](https://developer.garmin.com/fit/overview/) files 
 
 **Upload** edited files directly to Garmin Connect, or run in **monitor mode** for automatic uploads.
 
+**Estimate** calories burned for activities whose FIT files lack the value (e.g., from Hammerhead Karoo devices), using power data or a heart-rate-based fallback — see [Calorie Estimation](https://jat255.github.io/Fit-File-Faker/profiles/#calorie-estimation).
+
 ## 📖 Documentation
 
 For comprehensive documentation, visit: **https://jat255.github.io/Fit-File-Faker/**
