@@ -459,3 +459,102 @@ class TestCustomDeviceSimulation:
                 break
 
         assert file_creator_found, "FileCreatorMessage not found in modified file"
+
+
+class TestDeviceInfoWithoutProduct:
+    """Regression tests for issue #80 (COROS DURA device_info lacks product)."""
+
+    @staticmethod
+    def _build_dura_like_file(path: Path) -> None:
+        from datetime import datetime
+
+        from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
+        from fit_file_faker.vendor.fit_tool.profile.messages.device_info_message import (
+            DeviceInfoMessage,
+        )
+        from fit_file_faker.vendor.fit_tool.profile.messages.record_message import (
+            RecordMessage,
+        )
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import FileType
+
+        ts = int(datetime(2026, 8, 4, 8).timestamp() * 1000)
+        builder = FitFileBuilder(auto_define=True)
+        file_id = FileIdMessage()
+        file_id.type = FileType.ACTIVITY
+        file_id.manufacturer = Manufacturer.COROS.value
+        file_id.time_created = ts
+        file_id.serial_number = 111
+        builder.add(file_id)
+        dev = DeviceInfoMessage()
+        dev.timestamp = ts
+        dev.device_index = 0
+        dev.manufacturer = Manufacturer.COROS.value
+        dev.product_name = "COROS DURA"
+        dev.serial_number = 111
+        builder.add(dev)
+        rec = RecordMessage()
+        rec.timestamp = ts
+        rec.heart_rate = 120
+        builder.add(rec)
+        builder.build().to_file(str(path))
+
+    def test_device_info_gets_product_when_source_has_none(self, tmp_path):
+        from fit_file_faker.vendor.fit_tool.profile.messages.device_info_message import (
+            DeviceInfoMessage,
+        )
+
+        src = tmp_path / "dura.fit"
+        out = tmp_path / "dura_modified.fit"
+        self._build_dura_like_file(src)
+
+        result = FitEditor().edit_fit(src, output=out)
+        assert result == out
+
+        devices = [
+            r.message
+            for r in FitFile.from_file(str(out)).records
+            if isinstance(r.message, DeviceInfoMessage)
+        ]
+        assert len(devices) == 1
+        dev = devices[0]
+        assert dev.manufacturer == Manufacturer.GARMIN.value
+        assert dev.product == GarminProduct.EDGE_830.value
+        assert dev.serial_number == 111
+        assert dev.device_index == 0
+
+    def test_device_info_without_index_marked_as_creator(self, tmp_path):
+        """COROS DURA device_info also omits device_index/serial/source_type."""
+        from datetime import datetime
+
+        from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
+        from fit_file_faker.vendor.fit_tool.profile.messages.device_info_message import (
+            DeviceInfoMessage,
+        )
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import FileType
+
+        ts = int(datetime(2026, 8, 4, 8).timestamp() * 1000)
+        builder = FitFileBuilder(auto_define=True)
+        file_id = FileIdMessage()
+        file_id.type = FileType.ACTIVITY
+        file_id.manufacturer = Manufacturer.COROS.value
+        file_id.time_created = ts
+        builder.add(file_id)
+        dev = DeviceInfoMessage()
+        dev.timestamp = ts
+        dev.manufacturer = Manufacturer.COROS.value
+        dev.product_name = "COROS DURA"
+        builder.add(dev)
+        src = tmp_path / "dura_min.fit"
+        out = tmp_path / "dura_min_modified.fit"
+        builder.build().to_file(str(src))
+
+        FitEditor().edit_fit(src, output=out)
+        devs = [
+            r.message
+            for r in FitFile.from_file(str(out)).records
+            if isinstance(r.message, DeviceInfoMessage)
+        ]
+        assert devs[0].device_index == 0
+        assert devs[0].source_type == 5
+        assert devs[0].serial_number is not None
+        assert devs[0].product == GarminProduct.EDGE_830.value

@@ -281,6 +281,30 @@ class FitEditor:
             Manufacturer.ONELAP.value,
         ]
 
+    @staticmethod
+    def _rebuild_device_info(message: DeviceInfoMessage) -> DeviceInfoMessage:
+        """Copy a parsed `DeviceInfoMessage` into a fresh one with growable fields.
+
+        Fields absent from the source definition (such as `product`) cannot be
+        assigned on a parsed message, so this creates a new message and copies
+        every populated field across. Fields that cannot be copied are skipped.
+        """
+        new_m = DeviceInfoMessage()
+        for field in message.fields:
+            if not field.encoded_values or all(
+                v is None for v in field.encoded_values
+            ):
+                continue
+            new_field = new_m.get_field(field.field_id)
+            if new_field is None:
+                continue
+            try:
+                for idx, value in enumerate(field.encoded_values):
+                    new_field.set_encoded_value(idx, value, check_validity=False)
+            except Exception:  # pragma: no cover
+                _logger.debug(f"    Could not copy field {field.name}; skipping")
+        return new_m
+
     def _should_modify_device_info(self, manufacturer: int | None) -> bool:
         """Check if device info should be modified to Garmin Edge 830.
 
@@ -540,6 +564,29 @@ class FitEditor:
                         else:
                             target_manufacturer = Manufacturer.GARMIN.value
                             target_device = GarminProduct.EDGE_830.value
+
+                        # Some devices (e.g. COROS DURA) write device_info with a
+                        # manufacturer and product_name but no numeric product field.
+                        # A parsed message's fields are bound to the source definition
+                        # and cannot grow, so rebuild the record with a fresh
+                        # definition that includes product.
+                        if message.product is None and message.garmin_product is None:
+                            _logger.debug("    No product field; rebuilding record")
+                            message = self._rebuild_device_info(message)
+                            message.product = target_device  # type: ignore
+                            # Such records also tend to omit the fields Garmin Connect
+                            # uses to identify the recording device. Fill them in so
+                            # this record is recognised as the creator.
+                            if message.device_index is None:
+                                message.device_index = 0  # creator
+                            if message.source_type is None:
+                                message.source_type = 5  # local
+                            if message.serial_number is None:
+                                message.serial_number = (
+                                    self.profile.serial_number
+                                    if self.profile and self.profile.serial_number
+                                    else 1234567890
+                                )
 
                         # have not seen this set explicitly in testing, but probable good to set regardless
                         if message.garmin_product is not None:  # pragma: no cover
