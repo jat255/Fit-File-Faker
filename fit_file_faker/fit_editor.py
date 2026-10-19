@@ -225,6 +225,20 @@ class FitEditor:
         )
         if m.type:
             new_m.type = m.type
+
+        if not self._should_modify_manufacturer(m.manufacturer):
+            # Not a supported source platform (e.g. the file already claims to be
+            # Garmin, as TrainerDay's do): keep its device identity as documented,
+            # rather than dropping manufacturer/product and replacing the serial.
+            if m.manufacturer is not None:
+                new_m.manufacturer = m.manufacturer
+            if m.product is not None:
+                new_m.product = m.product
+            if m.serial_number is not None:
+                new_m.serial_number = m.serial_number
+            _logger.debug("    Manufacturer not modified; keeping original identity")
+            return (DefinitionMessage.from_data_message(new_m), new_m)
+
         # Use profile serial number if available, otherwise use default
         if self.profile and self.profile.serial_number:
             new_m.serial_number = self.profile.serial_number
@@ -280,6 +294,25 @@ class FitEditor:
             331,  # MYWHOOSH is unknown to fit_tools
             Manufacturer.ONELAP.value,
         ]
+
+    @staticmethod
+    def _build_creator_device_info(file_id: FileIdMessage) -> DeviceInfoMessage:
+        """Create a creator `DeviceInfoMessage` mirroring the (rewritten) file_id.
+
+        Used when the source file has no device_info for the recording device,
+        so Garmin Connect has a device to display for the activity.
+        """
+        dev = DeviceInfoMessage()
+        dev.timestamp = file_id.time_created
+        dev.device_index = 0  # creator
+        dev.source_type = 5  # local
+        if file_id.manufacturer is not None:
+            dev.manufacturer = file_id.manufacturer
+        if file_id.product is not None:
+            dev.product = file_id.product  # type: ignore
+        if file_id.serial_number is not None:
+            dev.serial_number = file_id.serial_number
+        return dev
 
     def _should_modify_device_info(self, manufacturer: int | None) -> bool:
         """Check if device info should be modified to Garmin Edge 830.
@@ -473,6 +506,16 @@ class FitEditor:
                     is_onelap = True
                 break
 
+        # Pre-scan for a device_info record describing the recording device.
+        # Some apps (e.g. TrainerDay) write a Garmin file_id but no device_info
+        # at all, and Garmin Connect then shows no device for the activity.
+        has_creator_device_info = any(
+            isinstance(record.message, DeviceInfoMessage)
+            and record.message.device_index in (None, 0)
+            and record.message.device_type != 0
+            for record in fit_file.records
+        )
+
         # Loop through records, find the ones we need to change, and modify the values
         for i, record in enumerate(fit_file.records):
             message = record.message
@@ -501,6 +544,14 @@ class FitEditor:
                             DefinitionMessage.from_data_message(creator_message)
                         )
                         builder.add(creator_message)
+                    if not has_creator_device_info:
+                        creator_device = self._build_creator_device_info(message)
+                        _logger.debug(
+                            "No creator device_info found; adding one from file_id"
+                        )
+                        self.print_message("    New DeviceInfo", creator_device)
+                        builder.add(DefinitionMessage.from_data_message(creator_device))
+                        builder.add(creator_device)
                     continue
 
             if message.global_id == FileCreatorMessage.ID:

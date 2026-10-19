@@ -459,3 +459,64 @@ class TestCustomDeviceSimulation:
                 break
 
         assert file_creator_found, "FileCreatorMessage not found in modified file"
+
+
+class TestGarminFileIdWithoutDeviceInfo:
+    """Files that already claim Garmin (e.g. TrainerDay) and have no device_info."""
+
+    @staticmethod
+    def _build(path: Path) -> None:
+        from datetime import datetime
+
+        from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
+        from fit_file_faker.vendor.fit_tool.profile.messages.record_message import (
+            RecordMessage,
+        )
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import FileType
+
+        ts = int(datetime(2026, 10, 13, 20).timestamp() * 1000)
+        builder = FitFileBuilder(auto_define=True)
+        file_id = FileIdMessage()
+        file_id.type = FileType.ACTIVITY
+        file_id.manufacturer = Manufacturer.GARMIN.value
+        file_id.product = GarminProduct.EDGE_530.value
+        file_id.serial_number = 3987112345
+        file_id.time_created = ts
+        builder.add(file_id)
+        rec = RecordMessage()
+        rec.timestamp = ts
+        rec.power = 200
+        builder.add(rec)
+        builder.build().to_file(str(path))
+
+    def test_garmin_file_id_identity_preserved(self, tmp_path):
+        src, out = tmp_path / "td.fit", tmp_path / "td_modified.fit"
+        self._build(src)
+        FitEditor().edit_fit(src, output=out)
+        fid = next(
+            r.message
+            for r in FitFile.from_file(str(out)).records
+            if isinstance(r.message, FileIdMessage)
+        )
+        assert fid.manufacturer == Manufacturer.GARMIN.value
+        assert fid.product == GarminProduct.EDGE_530.value
+        assert fid.serial_number == 3987112345
+
+    def test_creator_device_info_added_when_missing(self, tmp_path):
+        from fit_file_faker.vendor.fit_tool.profile.messages.device_info_message import (
+            DeviceInfoMessage,
+        )
+
+        src, out = tmp_path / "td.fit", tmp_path / "td_modified.fit"
+        self._build(src)
+        FitEditor().edit_fit(src, output=out)
+        devs = [
+            r.message
+            for r in FitFile.from_file(str(out)).records
+            if isinstance(r.message, DeviceInfoMessage)
+        ]
+        assert len(devs) == 1
+        assert devs[0].device_index == 0
+        assert devs[0].manufacturer == Manufacturer.GARMIN.value
+        assert devs[0].product == GarminProduct.EDGE_530.value
+        assert devs[0].serial_number == 3987112345
