@@ -21,6 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from fit_file_faker import calorie_calculator
 from fit_file_faker.vendor.fit_tool.definition_message import DefinitionMessage
 from fit_file_faker.vendor.fit_tool.fit_file import FitFile
 from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
@@ -35,6 +36,13 @@ from fit_file_faker.vendor.fit_tool.profile.messages.file_creator_message import
 )
 from fit_file_faker.vendor.fit_tool.profile.messages.file_id_message import (
     FileIdMessage,
+)
+from fit_file_faker.vendor.fit_tool.profile.messages.lap_message import LapMessage
+from fit_file_faker.vendor.fit_tool.profile.messages.record_message import (
+    RecordMessage,
+)
+from fit_file_faker.vendor.fit_tool.profile.messages.session_message import (
+    SessionMessage,
 )
 from fit_file_faker.vendor.fit_tool.profile.messages.software_message import (
     SoftwareMessage,
@@ -457,6 +465,33 @@ class FitEditor:
                 _logger.error("Output path required when using parsed FIT file")
                 return None
 
+        # Pre-pass: if the profile asks for calorie recalculation, estimate
+        # totals from RecordMessages now so we can inject them when we
+        # encounter Session/Lap in the main loop.
+        kcal_result = None
+        lap_counter = 0
+        if self.profile and getattr(self.profile, "recalculate_calories", False):
+            records = [
+                r.message
+                for r in fit_file.records
+                if isinstance(r.message, RecordMessage)
+            ]
+            laps = [
+                r.message for r in fit_file.records if isinstance(r.message, LapMessage)
+            ]
+            kcal_result = calorie_calculator.calculate_from_records(
+                records, laps, self.profile
+            )
+            if kcal_result.method == "none":
+                _logger.warning(
+                    f"Calorie recalculation requested but skipped: {kcal_result.reason}"
+                )
+            else:
+                _logger.info(
+                    f"Calorie recalculation: total={kcal_result.total_calories} kcal "
+                    f"(method={kcal_result.method}, {kcal_result.reason})"
+                )
+
         builder = FitFileBuilder(auto_define=True)
         skipped_device_type_zero = False
 
@@ -551,6 +586,36 @@ class FitEditor:
                         message.product_name = ""
                         self.print_message(f"    New Record: {i}", message)
 
+            if (
+                kcal_result is not None
+                and kcal_result.method != "none"
+                and isinstance(message, SessionMessage)
+                and not message.total_calories
+            ):
+                _inject_total_calories(message, kcal_result.total_calories)
+                _logger.info(
+                    f"Set SessionMessage.total_calories={kcal_result.total_calories} "
+                    f"(method={kcal_result.method})"
+                )
+
+            if (
+                kcal_result is not None
+                and kcal_result.method != "none"
+                and isinstance(message, LapMessage)
+                and kcal_result.per_lap_calories
+            ):
+                idx = lap_counter
+                lap_counter += 1
+                if (
+                    idx < len(kcal_result.per_lap_calories)
+                    and not message.total_calories
+                ):
+                    _inject_total_calories(message, kcal_result.per_lap_calories[idx])
+                    _logger.debug(
+                        f"Set LapMessage[{idx}].total_calories="
+                        f"{kcal_result.per_lap_calories[idx]}"
+                    )
+
             builder.add(message)
 
         # Add Activity messages at the end to ensure proper FIT file structure
@@ -573,6 +638,36 @@ class FitEditor:
             )
 
         return output
+
+
+def _inject_total_calories(message, value: int) -> None:
+    """Write `total_calories` into a Session/Lap message that didn't declare it.
+
+    `fit_tool` rejects setter calls when the field's `growable` flag is False —
+    this happens whenever the source file's definition message didn't include
+    the field. We flip the flag, set the value, and clear the cached
+    `definition_message` so `FitFileBuilder(auto_define=True)` regenerates a
+    fresh definition that includes the newly populated field.
+    """
+    if isinstance(message, SessionMessage):
+        from fit_file_faker.vendor.fit_tool.profile.messages.session_message import (
+            SessionTotalCaloriesField,
+        )
+
+        field_id = SessionTotalCaloriesField.ID
+    else:
+        from fit_file_faker.vendor.fit_tool.profile.messages.lap_message import (
+            LapTotalCaloriesField,
+        )
+
+        field_id = LapTotalCaloriesField.ID
+
+    field = message.get_field(field_id)
+    if field is None:
+        return
+    field.growable = True
+    message.total_calories = int(value)
+    message.definition_message = None
 
 
 # Global FIT editor instance

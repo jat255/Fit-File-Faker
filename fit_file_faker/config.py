@@ -32,7 +32,7 @@ import sys
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import questionary
 from platformdirs import PlatformDirs
@@ -637,6 +637,13 @@ class Profile:
         serial_number: Device serial number (should be the device's Unit ID; auto-generated if not specified)
         software_version: Firmware version in FIT format (e.g., 2922 = v29.22). If None,
             no FileCreatorMessage will be added to FIT files.
+        recalculate_calories: If True, the editor estimates total_calories for
+            Session/Lap messages that are missing it (power-first, HR-fallback).
+            Useful for devices like Hammerhead Karoo that don't write calories.
+        weight_kg: Body weight in kilograms; required only for the HR-based
+            fallback (Keytel formula). Optional otherwise.
+        age: Age in years; required only for the HR-based fallback.
+        sex: "male" or "female"; required only for the HR-based fallback.
 
     Examples:
         >>> from pathlib import Path
@@ -658,6 +665,10 @@ class Profile:
     device: int | None = None
     serial_number: int | None = None
     software_version: int | None = None
+    recalculate_calories: bool = False
+    weight_kg: float | None = None
+    age: int | None = None
+    sex: str | None = None
 
     def __post_init__(self):
         """Convert string types to proper objects after initialization.
@@ -1293,6 +1304,26 @@ def get_tpv_folder(default_path: Path | None) -> Path:
     return Path(TPVPath)
 
 
+_LBS_TO_KG = 0.45359237
+
+# Sentinel for "argument not provided" in update_profile, so that None can be
+# passed explicitly to clear an optional field (e.g. weight_kg/age/sex).
+_UNSET: Any = object()
+
+
+def _validate_weight(value: str, unit: str = "kg") -> bool:
+    """Accept any decimal weight in the plausible human range.
+
+    The plausible human range is 20-300 kg (≈ 44-661 lbs).
+    """
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return False
+    kg = amount * _LBS_TO_KG if unit == "lbs" else amount
+    return 20.0 <= kg <= 300.0
+
+
 class ProfileManager:
     """Manages profile CRUD operations and TUI interactions.
 
@@ -1322,6 +1353,10 @@ class ProfileManager:
         device: int | None = None,
         serial_number: int | None = None,
         software_version: int | None = None,
+        recalculate_calories: bool = False,
+        weight_kg: float | None = None,
+        age: int | None = None,
+        sex: str | None = None,
     ) -> Profile:
         """Create a new profile and add it to config.
 
@@ -1376,6 +1411,10 @@ class ProfileManager:
             device=device,
             serial_number=serial_number,
             software_version=software_version,
+            recalculate_calories=recalculate_calories,
+            weight_kg=weight_kg,
+            age=age,
+            sex=sex,
         )
 
         # Validate serial number if provided
@@ -1425,6 +1464,10 @@ class ProfileManager:
         device: int | None = None,
         serial_number: int | None = None,
         software_version: int | None = None,
+        recalculate_calories: bool | None = None,
+        weight_kg: float | None = _UNSET,
+        age: int | None = _UNSET,
+        sex: str | None = _UNSET,
     ) -> Profile:
         """Update an existing profile.
 
@@ -1439,6 +1482,10 @@ class ProfileManager:
             device: New device ID (optional).
             serial_number: New serial number (optional).
             software_version: New firmware version in FIT format (optional).
+            recalculate_calories: New calorie recalculation setting; None keeps
+                the current value.
+            weight_kg: New body weight in kg. Omit to keep the current value;
+                pass None explicitly to clear it. Same for `age` and `sex`.
 
         Returns:
             The updated Profile object.
@@ -1494,6 +1541,14 @@ class ProfileManager:
             profile.serial_number = serial_number
         if software_version is not None:
             profile.software_version = software_version
+        if recalculate_calories is not None:
+            profile.recalculate_calories = recalculate_calories
+        if weight_kg is not _UNSET:
+            profile.weight_kg = weight_kg
+        if age is not _UNSET:
+            profile.age = age
+        if sex is not _UNSET:
+            profile.sex = sex
 
         # Update default_profile if name changed
         if new_name and self.config_manager.config.default_profile == name:
@@ -1567,6 +1622,7 @@ class ProfileManager:
         table.add_column("App", style="blue")
         table.add_column("Device", style="cyan")
         table.add_column("Serial #", style="bright_blue")
+        table.add_column("Kcal est.", style="cyan", justify="center")
         table.add_column("Garmin User", style="yellow")
         table.add_column("FIT Path", style="magenta")
 
@@ -1595,6 +1651,9 @@ class ProfileManager:
                 str(profile.serial_number) if profile.serial_number else "N/A"
             )
 
+            # Calorie recalculation status
+            kcal_display = "✓" if profile.recalculate_calories else "—"
+
             # Truncate long paths
             path_str = str(profile.fitfiles_path)
             if len(path_str) > 40:
@@ -1605,6 +1664,7 @@ class ProfileManager:
                 app_display,
                 device_display,
                 serial_display,
+                kcal_display,
                 profile.garmin_username,
                 path_str,
             )
@@ -1652,6 +1712,123 @@ class ProfileManager:
             except (KeyboardInterrupt, EOFError):
                 console.print("\n[yellow]Operation cancelled.[/yellow]")
                 continue
+
+    def _prompt_calorie_settings(
+        self,
+        console: "Console",
+        current_recalculate: bool = False,
+        current_weight_kg: float | None = None,
+        current_age: int | None = None,
+        current_sex: str | None = None,
+    ) -> tuple[bool, float | None, int | None, str | None]:
+        """Ask the user whether to enable calorie recalculation and gather HR inputs.
+
+        Some bike computers (e.g., Hammerhead Karoo) don't write `total_calories`
+        to FIT files. Fit File Faker can estimate the value from power and HR
+        data already in the file, so Garmin Connect can use it for daily totals
+        and nutrition.
+
+        When called from the edit wizard, the `current_*` parameters seed the
+        prompts so the user sees their existing values as defaults and Enter-
+        through-the-wizard doesn't silently wipe them.
+
+        Returns:
+            Tuple of (recalculate_calories, weight_kg, age, sex) describing the
+            complete desired state — callers should apply it wholesale. None
+            for weight/age/sex means "not stored": when stored values exist and
+            the user answers No to keeping them, they are cleared. Cancelled
+            prompts (Ctrl+C / empty answer) return the current values instead,
+            so cancelling never wipes stored data.
+        """
+        console.print("\n[bold cyan]Calorie recalculation (optional)[/bold cyan]")
+        console.print(
+            "Some devices (e.g., Hammerhead Karoo) leave the FIT file without\n"
+            "an estimate of calories burned. Fit File Faker can compute it from\n"
+            "the recorded samples and write it into the file, so Garmin Connect\n"
+            "can use it for daily totals and the nutrition module.\n\n"
+            "[dim]Strategy:[/dim]\n"
+            "[dim]  1) If the file has power data → power-based (most accurate)[/dim]\n"
+            "[dim]  2) Otherwise → HR-based (Keytel formula; needs weight/age/sex)[/dim]"
+        )
+
+        enable = questionary.confirm(
+            "Enable calorie recalculation for this profile?",
+            default=current_recalculate,
+        ).ask()
+        if not enable:
+            # Keep any stored anthropometrics so toggling the feature back on
+            # later doesn't require re-entering them.
+            return (False, current_weight_kg, current_age, current_sex)
+
+        has_hr_inputs = (
+            current_weight_kg is not None
+            and current_age is not None
+            and current_sex in ("male", "female")
+        )
+        if has_hr_inputs:
+            hr_question = (
+                "Keep/update weight/age/sex for the HR-based fallback? "
+                "(answering No removes them from the profile)"
+            )
+        else:
+            hr_question = (
+                "Provide weight/age/sex for the HR-based fallback? "
+                "(skip if you only ride with power)"
+            )
+        provide_hr = questionary.confirm(
+            hr_question,
+            default=True if not current_recalculate else has_hr_inputs,
+        ).ask()
+        if not provide_hr:
+            return (True, None, None, None)
+
+        weight_unit = questionary.select(
+            "Weight unit:", choices=["kg", "lbs"], default="kg"
+        ).ask()
+        if not weight_unit:
+            return (True, current_weight_kg, current_age, current_sex)
+
+        # Pre-fill the prompt with the stored kg value (only when the user
+        # didn't switch unit — converting back to lbs would just look weird).
+        weight_default = (
+            f"{current_weight_kg:g}"
+            if current_weight_kg is not None and weight_unit == "kg"
+            else ""
+        )
+        weight_input = questionary.text(
+            f"Body weight ({weight_unit}):",
+            default=weight_default,
+            validate=lambda x: _validate_weight(x, weight_unit)
+            or f"Enter a number between {20 if weight_unit == 'kg' else 44} "
+            f"and {300 if weight_unit == 'kg' else 661}",
+        ).ask()
+        if not weight_input:
+            return (True, current_weight_kg, current_age, current_sex)
+
+        weight_kg = float(weight_input)
+        if weight_unit == "lbs":
+            weight_kg *= _LBS_TO_KG
+        # Round to 0.1 kg — Keytel coefficient × 0.1 kg ≈ 0.02 kcal/min
+        # impact, so storing more precision is just float noise.
+        weight_kg = round(weight_kg, 1)
+
+        age_default = str(current_age) if current_age is not None else ""
+        age_input = questionary.text(
+            "Age (years):",
+            default=age_default,
+            validate=lambda x: (x.isdigit() and 10 <= int(x) <= 120)
+            or "Enter a whole number between 10 and 120",
+        ).ask()
+        if not age_input:
+            return (True, weight_kg, current_age, current_sex)
+
+        sex = questionary.select(
+            "Sex (for Keytel formula):",
+            choices=["male", "female"],
+            default=current_sex if current_sex in ("male", "female") else None,
+        ).ask()
+
+        return (True, weight_kg, int(age_input), sex or current_sex)
 
     def create_profile_wizard(self) -> Profile | None:
         """Interactive wizard for creating a new profile.
@@ -1976,7 +2153,12 @@ class ProfileManager:
             "[dim](You can change these later via the edit profile menu)[/dim]"
         )
 
-        # Step 5: Profile name
+        # Step 5: Calorie recalculation (optional)
+        recalculate_calories, weight_kg, age, sex = self._prompt_calorie_settings(
+            console
+        )
+
+        # Step 6: Profile name
         suggested_name = app_type.value.split("_")[0].lower()
         profile_name = questionary.text(
             "Enter profile name:", default=suggested_name, validate=lambda x: len(x) > 0
@@ -1996,6 +2178,10 @@ class ProfileManager:
                 device=device,
                 serial_number=serial_number,
                 software_version=software_version,
+                recalculate_calories=recalculate_calories,
+                weight_kg=weight_kg,
+                age=age,
+                sex=sex,
             )
             console.print(
                 f"\n[green]✓ Profile '{profile_name}' created successfully![/green]"
@@ -2299,6 +2485,32 @@ class ProfileManager:
                     if serial_input and serial_input.isdigit():
                         new_serial = int(serial_input)
 
+        # Edit calorie recalculation settings. weight/age/sex default to _UNSET
+        # ("don't touch") — when the user walks through the calorie prompts,
+        # the returned tuple is applied wholesale, so None values clear the
+        # stored anthropometrics.
+        new_recalc: bool | None = None
+        new_weight: float | None = _UNSET
+        new_age: int | None = _UNSET
+        new_sex: str | None = _UNSET
+        current_state = "on" if profile.recalculate_calories else "off"
+        if questionary.confirm(
+            f"Edit calorie recalculation settings? (currently {current_state})",
+            default=False,
+        ).ask():
+            (
+                new_recalc,
+                new_weight,
+                new_age,
+                new_sex,
+            ) = self._prompt_calorie_settings(
+                console,
+                current_recalculate=profile.recalculate_calories,
+                current_weight_kg=profile.weight_kg,
+                current_age=profile.age,
+                current_sex=profile.sex,
+            )
+
         # Update profile with provided values
         try:
             self.update_profile(
@@ -2311,6 +2523,10 @@ class ProfileManager:
                 device=new_device,
                 serial_number=new_serial,
                 software_version=new_software_version,
+                recalculate_calories=new_recalc,
+                weight_kg=new_weight,
+                age=new_age,
+                sex=new_sex,
             )
             console.print("\n[green]✓ Profile updated successfully![/green]")
         except ValueError as e:

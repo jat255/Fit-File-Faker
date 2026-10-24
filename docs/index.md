@@ -19,6 +19,8 @@ This application allows you to easily modify [FIT](https://developer.garmin.com/
 
 Additionally, it can be run in a "monitor" mode that will watch a folder for new FIT files and will automatically edit/upload them as they are produced. One potential application of this mode is to have the tool auto-start on the computer that you use for indoor training, so rides are automatically uploaded to Garmin Connect when you finish.
 
+The tool can also estimate calories burned for activities whose FIT files lack the value (e.g., from Hammerhead Karoo devices), using power data or a heart-rate-based fallback — see [Calorie Estimation](profiles.md#calorie-estimation) for details.
+
 ## Feature walkthrough
 
 <div align="center">

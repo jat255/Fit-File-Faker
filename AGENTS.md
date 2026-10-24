@@ -88,6 +88,7 @@ fit_file_faker/
 ├── __init__.py           # Package initialization (1 line)
 ├── app.py                # Main application, CLI, uploads, monitoring (550 lines)
 ├── app_registry.py       # NEW: Trainer app detection system (305 lines)
+├── calorie_calculator.py # Calorie estimation for files missing total_calories
 ├── config.py             # Configuration management (750 lines)
 ├── fit_editor.py         # FIT file editing core logic (313 lines)
 └── utils.py              # Utility functions and monkey patches (103 lines)
@@ -134,6 +135,13 @@ fit_file_faker/
 - Device info messages are similarly rewritten to Garmin Edge 830
 - Preserves activity data (records, laps, sessions) - only modifies device metadata
 - Special handling for Activity messages (reordered to end for COROS compatibility)
+- Optional calorie injection: when `Profile.recalculate_calories` is enabled, missing `total_calories` values are estimated via `calorie_calculator.py` and written into Session/Lap messages (existing values are never overwritten)
+
+**`calorie_calculator.py` - Calorie Estimation**
+- Estimates `total_calories` for FIT files that lack it (e.g., Hammerhead Karoo)
+- Power-based method (preferred): integrates power samples, converts kJ → kcal at 22% gross efficiency
+- HR-based fallback: Keytel et al. (2005) regression, requires `Profile.weight_kg`/`age`/`sex`
+- Returns session total plus a per-lap split (`CalorieResult`), consumed by `fit_editor.py`
 
 **`app_registry.py` - Trainer App Detection**
 - `AppDetector` ABC: Abstract base class for trainer app detection

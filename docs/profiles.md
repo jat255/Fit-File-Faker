@@ -93,12 +93,18 @@ The ⭐ symbol indicates the default profile.
      - Enter Garmin username (email)
      - Enter Garmin password (masked input)
 
-4. **Profile Name**:
+4. **Calorie Estimation (optional)**:
+
+     - Enable estimation of calories burned for FIT files that lack the value
+       (see [Calorie Estimation](#calorie-estimation))
+     - Optionally provide weight/age/sex for the heart-rate-based fallback
+
+5. **Profile Name**:
    
      - Suggested name based on app type (e.g., "tpv", "zwift")
      - Option to customize name
 
-5. **Confirm & Save**: Review all settings and confirm
+6. **Confirm & Save**: Review all settings and confirm
 
 #### Example: Creating a Zwift Profile
 
@@ -222,6 +228,36 @@ For unsupported trainer apps or custom setups:
 - No auto-detection
 - Full flexibility for any FIT file source
 
+## Calorie Estimation
+
+Some devices and platforms — most notably the Hammerhead Karoo — do not write a `total_calories` value to their FIT files. When such a file is uploaded, Garmin Connect displays the activity with 0 kcal, which also skews daily calorie totals and the nutrition module.
+
+FIT File Faker can estimate the missing value from the data already recorded in the file and write it into the session and lap messages. The feature is **opt-in per profile** and only fills in *missing* values — activities that already contain calorie data are never modified.
+
+### Estimation Methods
+
+Two methods are supported, in order of preference:
+
+1. **Power-based** (used when at least half of the records contain valid power data): the total mechanical work is integrated from the power samples and converted to metabolic energy assuming a gross efficiency of 22% (`1 kJ of work ≈ 1.086 kcal`), the convention also used by Hammerhead, Garmin, and Strava. No personal data is required.
+2. **Heart-rate-based fallback** (used when power data is unavailable): the Keytel et al. (2005) regression, which requires your weight, age, and sex. These values are stored in the profile and are not used for anything else.
+
+If the power meter drops out mid-ride, the affected samples are filled in using the heart-rate method (when weight, age, and sex are configured), so the estimate does not undercount the power-less part of the activity.
+
+If neither method is applicable (no power data, and no anthropometric data configured), the file is processed normally and a warning is logged.
+
+### Enabling Calorie Estimation
+
+Enable the feature during profile creation, or later via `fit-file-faker --config-menu` → "Edit existing profile". The profiles table (`--list-profiles`) shows which profiles have it enabled in the "Kcal est." column.
+
+### Configuration Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `recalculate_calories` | bool | Enables the feature for this profile (default: `false`) |
+| `weight_kg` | float | Body weight in kilograms (HR fallback only) |
+| `age` | int | Age in years (HR fallback only) |
+| `sex` | string | `"male"` or `"female"` (HR fallback only) |
+
 ## Credential Isolation
 
 ### How It Works
@@ -268,7 +304,11 @@ The configuration file is stored in your platform's user config directory:
       "app_type": "zwift",
       "garmin_username": "personal@gmail.com",
       "garmin_password": "secret456",
-      "fitfiles_path": "/Users/test/Documents/Zwift/Activities"
+      "fitfiles_path": "/Users/test/Documents/Zwift/Activities",
+      "recalculate_calories": true,
+      "weight_kg": 75.0,
+      "age": 40,
+      "sex": "male"
     }
   ],
   "default_profile": "zwift"
