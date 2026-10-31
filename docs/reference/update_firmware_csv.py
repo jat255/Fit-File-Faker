@@ -26,6 +26,7 @@ firmware_data = {
     3907: (2511, "2026-01-21"),  # Fenix 7X
     3943: (2511, "2026-01-21"),  # Epix Gen 2
     # Forerunner devices
+    4565: (1829, "2026-09-04"),  # Forerunner 970
     4315: (2709, "2026-01-15"),  # Forerunner 965
     4024: (2709, "2026-01-15"),  # Forerunner 955
     4257: (2709, "2026-01-15"),  # Forerunner 265 Large

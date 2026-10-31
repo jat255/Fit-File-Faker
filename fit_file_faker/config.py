@@ -201,6 +201,16 @@ SUPPLEMENTAL_GARMIN_DEVICES = [
         "2026-01-21",
     ),
     GarminDeviceInfo(
+        "Forerunner 970",
+        4565,
+        "multisport_watch",
+        2025,
+        True,
+        "Premium running/cycling - 2025",
+        1829,
+        "2026-09-04",
+    ),
+    GarminDeviceInfo(
         "Forerunner 965",
         4315,
         "multisport_watch",
