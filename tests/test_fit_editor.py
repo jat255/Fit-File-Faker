@@ -15,9 +15,13 @@ from fit_file_faker.vendor.fit_tool.profile.messages.file_id_message import (
 from fit_file_faker.vendor.fit_tool.profile.messages.software_message import (
     SoftwareMessage,
 )
+from fit_file_faker.vendor.fit_tool.profile.messages.device_info_message import (
+    DeviceInfoMessage,
+)
 from fit_file_faker.vendor.fit_tool.profile.profile_type import (
     GarminProduct,
     Manufacturer,
+    DeviceIndex,
 )
 
 from fit_file_faker.fit_editor import FitEditor
@@ -187,18 +191,52 @@ class TestFitEditor:
     def test_should_modify_device_info(self, fit_editor):
         """Test the device info modification logic."""
         # Should modify these manufacturers
-        assert fit_editor._should_modify_device_info(Manufacturer.DEVELOPMENT.value)
-        assert fit_editor._should_modify_device_info(0)  # Blank manufacturer
-        assert fit_editor._should_modify_device_info(Manufacturer.ZWIFT.value)
-        assert fit_editor._should_modify_device_info(Manufacturer.WAHOO_FITNESS.value)
-        assert fit_editor._should_modify_device_info(Manufacturer.PEAKSWARE.value)
-        assert fit_editor._should_modify_device_info(Manufacturer.HAMMERHEAD.value)
-        assert fit_editor._should_modify_device_info(Manufacturer.COROS.value)
-        assert fit_editor._should_modify_device_info(331)  # MYWHOOSH
-        assert fit_editor._should_modify_device_info(Manufacturer.ONELAP.value)
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.DEVELOPMENT.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            0, DeviceIndex.CREATOR.value
+        )  # Blank manufacturer
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.ZWIFT.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.WAHOO_FITNESS.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.PEAKSWARE.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.HAMMERHEAD.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.COROS.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            331, DeviceIndex.CREATOR.value
+        )  # MYWHOOSH
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.ONELAP.value, DeviceIndex.CREATOR.value
+        )
+        # Also modify if no device_index is written. Then it is surely no external sensor
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.DEVELOPMENT.value, None
+        )
 
         # Should NOT modify None
-        assert not fit_editor._should_modify_device_info(None)
+        assert not fit_editor._should_modify_device_info(None, None)
+        assert not fit_editor._should_modify_device_info(
+            None, DeviceIndex.CREATOR.value
+        )
+
+        # Should NOT modify if source type is not LOCAL
+        assert not fit_editor._should_modify_device_info(
+            Manufacturer.DEVELOPMENT.value, 1
+        )
+        assert not fit_editor._should_modify_device_info(0, 2)  # Blank manufacturer
+        assert not fit_editor._should_modify_device_info(
+            Manufacturer.WAHOO_FITNESS.value, 1
+        )
 
     def test_invalid_input_type(self, fit_editor, temp_dir):
         """Test that invalid input types are rejected gracefully."""
@@ -459,3 +497,58 @@ class TestCustomDeviceSimulation:
                 break
 
         assert file_creator_found, "FileCreatorMessage not found in modified file"
+
+    @pytest.mark.slow
+    def test_edit_fit_with_device_info_serial_number(self, karoo_fit_parsed, temp_dir):
+        """Test that software version and serial number are also written to device_info if needed (for Karoo)"""
+        from fit_file_faker.config import Profile, AppType
+
+        # Create profile with software_version
+        # Using Edge 1050 (device ID 4440) from supplemental registry
+        profile = Profile(
+            name="test",
+            app_type=AppType.CUSTOM,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            device=4440,  # Edge 1050
+            software_version=2922,  # v29.22 in FIT format
+            serial_number=1234567890,
+        )
+
+        editor = FitEditor(profile=profile)
+        output_file = temp_dir / "with_device_info_serial_number.fit"
+
+        # Edit the file
+        result = editor.edit_fit(karoo_fit_parsed, output=output_file)
+
+        assert result == output_file
+        # filter out device_type == 0 like in fit-editor
+        source_entries = [
+            r.message
+            for r in karoo_fit_parsed.records
+            if isinstance(r.message, DeviceInfoMessage) and r.message.device_type != 0
+        ]
+        modified_fit = FitFile.from_file(str(output_file))
+        modified_entries = [
+            record.message
+            for record in modified_fit.records
+            if (isinstance(record.message, DeviceInfoMessage))
+        ]
+        assert len(modified_entries) == len(source_entries)
+
+        for source_entry, modified_entry in zip(source_entries, modified_entries):
+            if editor._should_modify_device_info(
+                source_entry.manufacturer, source_entry.device_index
+            ):
+                assert modified_entry.garmin_product == profile.device
+                assert modified_entry.product == profile.device
+                assert modified_entry.manufacturer == profile.manufacturer
+                assert modified_entry.serial_number == profile.serial_number
+                assert modified_entry.software_version == profile.software_version
+            else:
+                assert modified_entry.garmin_product == source_entry.garmin_product
+                assert modified_entry.product == source_entry.garmin_product
+                assert modified_entry.manufacturer == source_entry.manufacturer
+                assert modified_entry.serial_number == source_entry.serial_number
+                assert modified_entry.software_version == source_entry.software_version

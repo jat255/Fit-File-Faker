@@ -42,6 +42,7 @@ from fit_file_faker.vendor.fit_tool.profile.messages.software_message import (
 from fit_file_faker.vendor.fit_tool.profile.profile_type import (
     GarminProduct,
     Manufacturer,
+    DeviceIndex,
 )
 
 _logger = logging.getLogger("garmin")
@@ -281,11 +282,15 @@ class FitEditor:
             Manufacturer.ONELAP.value,
         ]
 
-    def _should_modify_device_info(self, manufacturer: int | None) -> bool:
+    def _should_modify_device_info(
+        self, manufacturer: int | None, device_index: int | None
+    ) -> bool:
         """Check if device info should be modified to Garmin Edge 830.
 
         Similar to _should_modify_manufacturer but also includes blank/unknown
         manufacturers (code 0) for `DeviceInfoMessage` records.
+        device_index must also be either None or 0 (i.e. CREATOR)
+        because we edit external sensors (HRM/PM) elsewise.
 
         Args:
             manufacturer: The manufacturer code from the `DeviceInfoMessage`, or `None`.
@@ -299,7 +304,10 @@ class FitEditor:
             [`_should_modify_manufacturer()`][fit_file_faker.fit_editor.FitEditor._should_modify_manufacturer]
             plus manufacturer code 0 (blank/unknown).
         """
-        if manufacturer is None:
+        if manufacturer is None or device_index not in (
+            None,
+            DeviceIndex.CREATOR.value,
+        ):
             return False
         return manufacturer in [
             Manufacturer.DEVELOPMENT.value,
@@ -528,7 +536,9 @@ class FitEditor:
                         )
                         message.device_index = message.device_index - 1
 
-                    if self._should_modify_device_info(message.manufacturer):
+                    if self._should_modify_device_info(
+                        message.manufacturer, message.device_index
+                    ):
                         _logger.debug("    Modifying values")
                         _logger.debug(f"garmin_product: {message.garmin_product}")
                         _logger.debug(f"product: {message.product}")
@@ -537,9 +547,11 @@ class FitEditor:
                         if self.profile:
                             target_manufacturer = self.profile.manufacturer
                             target_device = self.profile.device
+                            target_serial_number = self.profile.serial_number
                         else:
                             target_manufacturer = Manufacturer.GARMIN.value
                             target_device = GarminProduct.EDGE_830.value
+                            target_serial_number = 1234567890
 
                         # have not seen this set explicitly in testing, but probable good to set regardless
                         if message.garmin_product is not None:  # pragma: no cover
@@ -548,6 +560,22 @@ class FitEditor:
                             message.product = target_device  # type: ignore
                         if message.manufacturer is not None:
                             message.manufacturer = target_manufacturer
+                        if message.serial_number is not None:
+                            message.serial_number = target_serial_number
+                        if (
+                            message.product is not None
+                            and self.profile
+                            and self.profile.software_version is not None
+                        ):
+                            field = message.get_field_by_name("software_version")
+                            if field is not None:
+                                field.growable = True
+                                # forces fit-tool to regenerate the definition,
+                                # otherwise software_version is not included
+                                message.definition_message = None
+                                message.software_version = (
+                                    self.profile.software_version / 100.0
+                                )
                         message.product_name = ""
                         self.print_message(f"    New Record: {i}", message)
 
