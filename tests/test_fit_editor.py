@@ -378,6 +378,33 @@ class TestCustomDeviceSimulation:
         )
 
     @pytest.mark.slow
+    def test_edit_fit_with_forerunner_970(self, tpv_fit_parsed, temp_dir):
+        """Test that the Forerunner 970 product and firmware are written to FIT."""
+        from fit_file_faker.config import AppType, ConfigManager, ProfileManager
+
+        profile = ProfileManager(ConfigManager()).create_profile(
+            name="forerunner_970",
+            app_type=AppType.ZWIFT,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            device=4565,
+        )
+        assert profile.software_version == 1832
+        output_file = temp_dir / "forerunner_970.fit"
+
+        assert (
+            FitEditor(profile=profile).edit_fit(tpv_fit_parsed, output=output_file)
+            == output_file
+        )
+        verify_garmin_device_info(output_file, expected_product=4565)
+        assert any(
+            isinstance(record.message, FileCreatorMessage)
+            and record.message.software_version == 1832
+            for record in FitFile.from_file(str(output_file)).records
+        )
+
+    @pytest.mark.slow
     def test_set_profile_after_init(self, tpv_fit_parsed, temp_dir):
         """Test setting profile after initialization."""
         from fit_file_faker.config import Profile, AppType
