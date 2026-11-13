@@ -3717,6 +3717,16 @@ class TestSupplementalDevices:
         )
 
         devices = get_supported_garmin_devices(show_all=False)
+        assert ("Forerunner 970", 4565) in {
+            (name, product_id) for name, product_id, _ in devices
+        }
+        forerunner_970 = next(
+            device
+            for device in SUPPLEMENTAL_GARMIN_DEVICES
+            if device.product_id == 4565
+        )
+        assert forerunner_970.software_version == 1832
+        assert forerunner_970.software_date == "2026-10-06"
 
         # Should return list of 3-tuples
         assert len(devices) > 0
