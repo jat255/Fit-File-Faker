@@ -691,3 +691,28 @@ class TestDeviceInfoWithoutProduct:
         assert devs[0].source_type == 5
         assert devs[0].serial_number is not None
         assert devs[0].product == GarminProduct.EDGE_830.value
+
+
+def test_rebuild_device_info_preserves_developer_fields():
+    """Rebuilding a creator must retain independent copies of custom data."""
+    from fit_file_faker.vendor.fit_tool.base_type import BaseType
+    from fit_file_faker.vendor.fit_tool.developer_field import DeveloperField
+
+    dev = DeviceInfoMessage()
+    custom = DeveloperField(
+        field_id=1,
+        name="custom",
+        base_type=BaseType.UINT16,
+        developer_data_index=2,
+        growable=True,
+    )
+    custom.set_value(0, 123)
+    dev.developer_fields.append(custom)
+    rebuilt = FitEditor._rebuild_device_info(dev)
+    assert len(rebuilt.developer_fields) == 1
+    copied = rebuilt.developer_fields[0]
+    assert copied.get_value() == 123
+    assert copied.developer_data_index == 2
+    assert copied is not custom
+    copied.set_value(0, 456)
+    assert custom.get_value() == 123

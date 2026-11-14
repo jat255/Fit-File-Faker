@@ -17,6 +17,7 @@ Typical usage example:
 """
 
 import logging
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -291,6 +292,7 @@ class FitEditor:
         every populated field across. Fields that cannot be copied are skipped.
         """
         new_m = DeviceInfoMessage()
+        new_m.developer_fields = deepcopy(message.developer_fields)
         for field in message.fields:
             if not field.encoded_values or all(v is None for v in field.encoded_values):
                 continue
