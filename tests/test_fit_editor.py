@@ -15,9 +15,13 @@ from fit_file_faker.vendor.fit_tool.profile.messages.file_id_message import (
 from fit_file_faker.vendor.fit_tool.profile.messages.software_message import (
     SoftwareMessage,
 )
+from fit_file_faker.vendor.fit_tool.profile.messages.device_info_message import (
+    DeviceInfoMessage,
+)
 from fit_file_faker.vendor.fit_tool.profile.profile_type import (
     GarminProduct,
     Manufacturer,
+    DeviceIndex,
 )
 
 from fit_file_faker.fit_editor import FitEditor
@@ -187,18 +191,52 @@ class TestFitEditor:
     def test_should_modify_device_info(self, fit_editor):
         """Test the device info modification logic."""
         # Should modify these manufacturers
-        assert fit_editor._should_modify_device_info(Manufacturer.DEVELOPMENT.value)
-        assert fit_editor._should_modify_device_info(0)  # Blank manufacturer
-        assert fit_editor._should_modify_device_info(Manufacturer.ZWIFT.value)
-        assert fit_editor._should_modify_device_info(Manufacturer.WAHOO_FITNESS.value)
-        assert fit_editor._should_modify_device_info(Manufacturer.PEAKSWARE.value)
-        assert fit_editor._should_modify_device_info(Manufacturer.HAMMERHEAD.value)
-        assert fit_editor._should_modify_device_info(Manufacturer.COROS.value)
-        assert fit_editor._should_modify_device_info(331)  # MYWHOOSH
-        assert fit_editor._should_modify_device_info(Manufacturer.ONELAP.value)
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.DEVELOPMENT.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            0, DeviceIndex.CREATOR.value
+        )  # Blank manufacturer
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.ZWIFT.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.WAHOO_FITNESS.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.PEAKSWARE.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.HAMMERHEAD.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.COROS.value, DeviceIndex.CREATOR.value
+        )
+        assert fit_editor._should_modify_device_info(
+            331, DeviceIndex.CREATOR.value
+        )  # MYWHOOSH
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.ONELAP.value, DeviceIndex.CREATOR.value
+        )
+        # Also modify if no device_index is written. Then it is surely no external sensor
+        assert fit_editor._should_modify_device_info(
+            Manufacturer.DEVELOPMENT.value, None
+        )
 
         # Should NOT modify None
-        assert not fit_editor._should_modify_device_info(None)
+        assert not fit_editor._should_modify_device_info(None, None)
+        assert not fit_editor._should_modify_device_info(
+            None, DeviceIndex.CREATOR.value
+        )
+
+        # Should NOT modify if source type is not LOCAL
+        assert not fit_editor._should_modify_device_info(
+            Manufacturer.DEVELOPMENT.value, 1
+        )
+        assert not fit_editor._should_modify_device_info(0, 2)  # Blank manufacturer
+        assert not fit_editor._should_modify_device_info(
+            Manufacturer.WAHOO_FITNESS.value, 1
+        )
 
     def test_invalid_input_type(self, fit_editor, temp_dir):
         """Test that invalid input types are rejected gracefully."""
@@ -460,6 +498,200 @@ class TestCustomDeviceSimulation:
 
         assert file_creator_found, "FileCreatorMessage not found in modified file"
 
+    @pytest.mark.slow
+    def test_edit_fit_with_device_info_serial_number(self, karoo_fit_parsed, temp_dir):
+        """Test that software version and serial number are also written to device_info if needed (for Karoo)"""
+        from fit_file_faker.config import Profile, AppType
+
+        # Create profile with software_version
+        # Using Edge 1050 (device ID 4440) from supplemental registry
+        profile = Profile(
+            name="test",
+            app_type=AppType.CUSTOM,
+            garmin_username="user@example.com",
+            garmin_password="pass",
+            fitfiles_path=Path("/path/to/files"),
+            device=4440,  # Edge 1050
+            software_version=2922,  # v29.22 in FIT format
+            serial_number=1234567890,
+        )
+
+        editor = FitEditor(profile=profile)
+        output_file = temp_dir / "with_device_info_serial_number.fit"
+
+        # Snapshot before edit_fit mutates parsed messages in place.
+        from copy import deepcopy
+
+        original = deepcopy(karoo_fit_parsed)
+        result = editor.edit_fit(karoo_fit_parsed, output=output_file)
+
+        assert result == output_file
+        # filter out device_type == 0 like in fit-editor
+        source_entries = [
+            r.message
+            for r in original.records
+            if isinstance(r.message, DeviceInfoMessage) and r.message.device_type != 0
+        ]
+        modified_fit = FitFile.from_file(str(output_file))
+        modified_entries = [
+            record.message
+            for record in modified_fit.records
+            if (isinstance(record.message, DeviceInfoMessage))
+        ]
+        assert len(modified_entries) == len(source_entries)
+
+        for source_entry, modified_entry in zip(source_entries, modified_entries):
+            if editor._should_modify_device_info(
+                source_entry.manufacturer, source_entry.device_index
+            ):
+                assert modified_entry.garmin_product == profile.device
+                assert modified_entry.product == profile.device
+                assert modified_entry.manufacturer == profile.manufacturer
+                assert modified_entry.serial_number == profile.serial_number
+                assert (
+                    modified_entry.software_version == profile.software_version / 100.0
+                )
+            else:
+                assert modified_entry.garmin_product == source_entry.garmin_product
+                assert modified_entry.product == source_entry.garmin_product
+                assert modified_entry.manufacturer == source_entry.manufacturer
+                assert modified_entry.serial_number == source_entry.serial_number
+                assert modified_entry.software_version == source_entry.software_version
+
+
+@pytest.mark.parametrize("serial", [None, 111])
+def test_creator_identity_and_sensor_preservation(tmp_path, serial):
+    """Fill absent creator serials and leave supported-manufacturer sensors intact."""
+    from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
+
+    builder = FitFileBuilder(auto_define=True)
+    fid = FileIdMessage()
+    fid.type = 4
+    fid.manufacturer = Manufacturer.HAMMERHEAD.value
+    fid.product = 3
+    fid.time_created = 1785916974000
+    builder.add(fid)
+    for index in (0, 1):
+        dev = DeviceInfoMessage()
+        dev.device_index = index
+        dev.manufacturer = Manufacturer.WAHOO_FITNESS.value
+        dev.product = 3
+        dev.product_name = "Original device"
+        if serial is not None:
+            dev.serial_number = serial
+        builder.add(dev)
+    src, out = tmp_path / "source.fit", tmp_path / "out.fit"
+    builder.build().to_file(str(src))
+    FitEditor().edit_fit(src, output=out)
+    messages = [r.message for r in FitFile.from_file(str(out)).records]
+    fid = next(m for m in messages if isinstance(m, FileIdMessage))
+    creator, sensor = [m for m in messages if isinstance(m, DeviceInfoMessage)]
+    assert creator.serial_number == fid.serial_number
+    assert creator.product == fid.product
+    assert sensor.manufacturer == Manufacturer.WAHOO_FITNESS.value
+    assert sensor.product == 3
+    assert sensor.serial_number == serial
+    assert sensor.product_name == "Original device"
+
+
+class TestDeviceInfoWithoutProduct:
+    """Regression tests for issue #80 (COROS DURA device_info lacks product)."""
+
+    @staticmethod
+    def _build_dura_like_file(path: Path) -> None:
+        from datetime import datetime
+
+        from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
+        from fit_file_faker.vendor.fit_tool.profile.messages.device_info_message import (
+            DeviceInfoMessage,
+        )
+        from fit_file_faker.vendor.fit_tool.profile.messages.record_message import (
+            RecordMessage,
+        )
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import FileType
+
+        ts = int(datetime(2026, 8, 4, 8).timestamp() * 1000)
+        builder = FitFileBuilder(auto_define=True)
+        file_id = FileIdMessage()
+        file_id.type = FileType.ACTIVITY
+        file_id.manufacturer = Manufacturer.COROS.value
+        file_id.time_created = ts
+        file_id.serial_number = 111
+        builder.add(file_id)
+        dev = DeviceInfoMessage()
+        dev.timestamp = ts
+        dev.device_index = 0
+        dev.manufacturer = Manufacturer.COROS.value
+        dev.product_name = "COROS DURA"
+        dev.serial_number = 111
+        builder.add(dev)
+        rec = RecordMessage()
+        rec.timestamp = ts
+        rec.heart_rate = 120
+        builder.add(rec)
+        builder.build().to_file(str(path))
+
+    def test_device_info_gets_product_when_source_has_none(self, tmp_path):
+        from fit_file_faker.vendor.fit_tool.profile.messages.device_info_message import (
+            DeviceInfoMessage,
+        )
+
+        src = tmp_path / "dura.fit"
+        out = tmp_path / "dura_modified.fit"
+        self._build_dura_like_file(src)
+
+        result = FitEditor().edit_fit(src, output=out)
+        assert result == out
+
+        devices = [
+            r.message
+            for r in FitFile.from_file(str(out)).records
+            if isinstance(r.message, DeviceInfoMessage)
+        ]
+        assert len(devices) == 1
+        dev = devices[0]
+        assert dev.manufacturer == Manufacturer.GARMIN.value
+        assert dev.product == GarminProduct.EDGE_830.value
+        assert dev.serial_number == 1234567890
+        assert dev.device_index == 0
+
+    def test_device_info_without_index_marked_as_creator(self, tmp_path):
+        """COROS DURA device_info also omits device_index/serial/source_type."""
+        from datetime import datetime
+
+        from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
+        from fit_file_faker.vendor.fit_tool.profile.messages.device_info_message import (
+            DeviceInfoMessage,
+        )
+        from fit_file_faker.vendor.fit_tool.profile.profile_type import FileType
+
+        ts = int(datetime(2026, 8, 4, 8).timestamp() * 1000)
+        builder = FitFileBuilder(auto_define=True)
+        file_id = FileIdMessage()
+        file_id.type = FileType.ACTIVITY
+        file_id.manufacturer = Manufacturer.COROS.value
+        file_id.time_created = ts
+        builder.add(file_id)
+        dev = DeviceInfoMessage()
+        dev.timestamp = ts
+        dev.manufacturer = Manufacturer.COROS.value
+        dev.product_name = "COROS DURA"
+        builder.add(dev)
+        src = tmp_path / "dura_min.fit"
+        out = tmp_path / "dura_min_modified.fit"
+        builder.build().to_file(str(src))
+
+        FitEditor().edit_fit(src, output=out)
+        devs = [
+            r.message
+            for r in FitFile.from_file(str(out)).records
+            if isinstance(r.message, DeviceInfoMessage)
+        ]
+        assert devs[0].device_index == 0
+        assert devs[0].source_type == 5
+        assert devs[0].serial_number is not None
+        assert devs[0].product == GarminProduct.EDGE_830.value
+
 
 class TestGarminFileIdWithoutDeviceInfo:
     """Files that already claim Garmin (e.g. TrainerDay) and have no device_info."""
@@ -520,3 +752,33 @@ class TestGarminFileIdWithoutDeviceInfo:
         assert devs[0].manufacturer == Manufacturer.GARMIN.value
         assert devs[0].product == GarminProduct.EDGE_530.value
         assert devs[0].serial_number == 3987112345
+
+
+def test_renumbered_creator_is_not_duplicated(tmp_path):
+    from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
+
+    builder = FitFileBuilder(auto_define=True)
+    fid = FileIdMessage()
+    fid.type = 4
+    fid.manufacturer = Manufacturer.HAMMERHEAD.value
+    fid.product = 3
+    fid.time_created = 1785916974000
+    builder.add(fid)
+    for index, device_type in ((0, 0), (1, 4)):
+        dev = DeviceInfoMessage()
+        dev.device_index = index
+        dev.device_type = device_type
+        dev.manufacturer = Manufacturer.HAMMERHEAD.value
+        dev.product = 3
+        dev.product_name = "Karoo"
+        builder.add(dev)
+    src, out = tmp_path / "source.fit", tmp_path / "out.fit"
+    builder.build().to_file(str(src))
+    FitEditor().edit_fit(src, output=out)
+    devices = [
+        r.message
+        for r in FitFile.from_file(str(out)).records
+        if isinstance(r.message, DeviceInfoMessage)
+    ]
+    assert len(devices) == 1
+    assert devices[0].device_index == 0
