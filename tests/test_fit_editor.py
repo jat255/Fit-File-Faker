@@ -519,14 +519,17 @@ class TestCustomDeviceSimulation:
         editor = FitEditor(profile=profile)
         output_file = temp_dir / "with_device_info_serial_number.fit"
 
-        # Edit the file
+        # Snapshot before edit_fit mutates parsed messages in place.
+        from copy import deepcopy
+
+        original = deepcopy(karoo_fit_parsed)
         result = editor.edit_fit(karoo_fit_parsed, output=output_file)
 
         assert result == output_file
         # filter out device_type == 0 like in fit-editor
         source_entries = [
             r.message
-            for r in karoo_fit_parsed.records
+            for r in original.records
             if isinstance(r.message, DeviceInfoMessage) and r.message.device_type != 0
         ]
         modified_fit = FitFile.from_file(str(output_file))
@@ -545,10 +548,47 @@ class TestCustomDeviceSimulation:
                 assert modified_entry.product == profile.device
                 assert modified_entry.manufacturer == profile.manufacturer
                 assert modified_entry.serial_number == profile.serial_number
-                assert modified_entry.software_version == profile.software_version
+                assert (
+                    modified_entry.software_version == profile.software_version / 100.0
+                )
             else:
                 assert modified_entry.garmin_product == source_entry.garmin_product
                 assert modified_entry.product == source_entry.garmin_product
                 assert modified_entry.manufacturer == source_entry.manufacturer
                 assert modified_entry.serial_number == source_entry.serial_number
                 assert modified_entry.software_version == source_entry.software_version
+
+
+@pytest.mark.parametrize("serial", [None, 111])
+def test_creator_identity_and_sensor_preservation(tmp_path, serial):
+    """Fill absent creator serials and leave supported-manufacturer sensors intact."""
+    from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
+
+    builder = FitFileBuilder(auto_define=True)
+    fid = FileIdMessage()
+    fid.type = 4
+    fid.manufacturer = Manufacturer.HAMMERHEAD.value
+    fid.product = 3
+    fid.time_created = 1785916974000
+    builder.add(fid)
+    for index in (0, 1):
+        dev = DeviceInfoMessage()
+        dev.device_index = index
+        dev.manufacturer = Manufacturer.WAHOO_FITNESS.value
+        dev.product = 3
+        dev.product_name = "Original device"
+        if serial is not None:
+            dev.serial_number = serial
+        builder.add(dev)
+    src, out = tmp_path / "source.fit", tmp_path / "out.fit"
+    builder.build().to_file(str(src))
+    FitEditor().edit_fit(src, output=out)
+    messages = [r.message for r in FitFile.from_file(str(out)).records]
+    fid = next(m for m in messages if isinstance(m, FileIdMessage))
+    creator, sensor = [m for m in messages if isinstance(m, DeviceInfoMessage)]
+    assert creator.serial_number == fid.serial_number
+    assert creator.product == fid.product
+    assert sensor.manufacturer == Manufacturer.WAHOO_FITNESS.value
+    assert sensor.product == 3
+    assert sensor.serial_number == serial
+    assert sensor.product_name == "Original device"

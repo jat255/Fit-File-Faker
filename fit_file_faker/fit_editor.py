@@ -289,8 +289,8 @@ class FitEditor:
 
         Similar to _should_modify_manufacturer but also includes blank/unknown
         manufacturers (code 0) for `DeviceInfoMessage` records.
-        device_index must also be either None or 0 (i.e. CREATOR)
-        because we edit external sensors (HRM/PM) elsewise.
+        Only the creator (index 0) or an unindexed device is eligible;
+        indexed peripheral sensors must retain their original identity.
 
         Args:
             manufacturer: The manufacturer code from the `DeviceInfoMessage`, or `None`.
@@ -547,7 +547,9 @@ class FitEditor:
                         if self.profile:
                             target_manufacturer = self.profile.manufacturer
                             target_device = self.profile.device
-                            target_serial_number = self.profile.serial_number
+                            target_serial_number = (
+                                self.profile.serial_number or 1234567890
+                            )
                         else:
                             target_manufacturer = Manufacturer.GARMIN.value
                             target_device = GarminProduct.EDGE_830.value
@@ -560,8 +562,10 @@ class FitEditor:
                             message.product = target_device  # type: ignore
                         if message.manufacturer is not None:
                             message.manufacturer = target_manufacturer
-                        if message.serial_number is not None:
-                            message.serial_number = target_serial_number
+                        serial_field = message.get_field_by_name("serial_number")
+                        serial_field.growable = True
+                        message.definition_message = None
+                        message.serial_number = target_serial_number
                         if (
                             message.product is not None
                             and self.profile
