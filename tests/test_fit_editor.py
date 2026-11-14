@@ -526,21 +526,25 @@ class TestCustomDeviceSimulation:
         assert file_creator_found, "FileCreatorMessage not found in modified file"
 
     @pytest.mark.slow
-    def test_edit_fit_with_device_info_serial_number(self, karoo_fit_parsed, temp_dir):
+    @pytest.mark.parametrize(
+        "device,serial_number", [(4440, 1234567890), (4536, 2345678901)]
+    )
+    def test_edit_fit_with_device_info_serial_number(
+        self, karoo_fit_parsed, temp_dir, device, serial_number
+    ):
         """Test that software version and serial number are also written to device_info if needed (for Karoo)"""
         from fit_file_faker.config import Profile, AppType
 
-        # Create profile with software_version
-        # Using Edge 1050 (device ID 4440) from supplemental registry
+        # Test both an Edge 1050 and a Fenix 8 47mm.
         profile = Profile(
             name="test",
             app_type=AppType.CUSTOM,
             garmin_username="user@example.com",
             garmin_password="pass",
             fitfiles_path=Path("/path/to/files"),
-            device=4440,  # Edge 1050
+            device=device,  # Edge 1050 or Fenix 8 47mm
             software_version=2922,  # v29.22 in FIT format
-            serial_number=1234567890,
+            serial_number=serial_number,
         )
 
         editor = FitEditor(profile=profile)
@@ -560,6 +564,12 @@ class TestCustomDeviceSimulation:
             if isinstance(r.message, DeviceInfoMessage) and r.message.device_type != 0
         ]
         modified_fit = FitFile.from_file(str(output_file))
+        file_id = next(
+            r.message
+            for r in modified_fit.records
+            if isinstance(r.message, FileIdMessage)
+        )
+        assert file_id.serial_number == serial_number
         modified_entries = [
             record.message
             for record in modified_fit.records
