@@ -716,3 +716,21 @@ def test_rebuild_device_info_preserves_developer_fields():
     assert copied is not custom
     copied.set_value(0, 456)
     assert custom.get_value() == 123
+
+
+def test_rebuild_device_info_skips_unknown_standard_fields():
+    """An unsupported field must not prevent copying known device metadata."""
+    from fit_file_faker.vendor.fit_tool.base_type import BaseType
+    from fit_file_faker.vendor.fit_tool.field import Field
+
+    dev = DeviceInfoMessage()
+    dev.manufacturer = Manufacturer.COROS.value
+    dev.product_name = "COROS DURA"
+    unknown = Field(field_id=254, base_type=BaseType.UINT8, growable=True)
+    unknown.set_value(0, 42)
+    dev.fields.append(unknown)
+
+    rebuilt = FitEditor._rebuild_device_info(dev)
+    assert rebuilt.get_field(254) is None
+    assert rebuilt.manufacturer == dev.manufacturer
+    assert rebuilt.product_name == dev.product_name
