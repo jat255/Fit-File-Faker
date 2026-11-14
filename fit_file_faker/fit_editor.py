@@ -17,6 +17,7 @@ Typical usage example:
 """
 
 import logging
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -42,6 +43,8 @@ from fit_file_faker.vendor.fit_tool.profile.messages.software_message import (
 from fit_file_faker.vendor.fit_tool.profile.profile_type import (
     GarminProduct,
     Manufacturer,
+    DeviceIndex,
+    SourceType,
 )
 
 _logger = logging.getLogger("garmin")
@@ -225,6 +228,19 @@ class FitEditor:
         )
         if m.type:
             new_m.type = m.type
+        if not self._should_modify_manufacturer(m.manufacturer):
+            # Not a supported source platform (e.g. the file already claims to be
+            # Garmin, as TrainerDay's do): keep its device identity as documented,
+            # rather than dropping manufacturer/product and replacing the serial.
+            if m.manufacturer is not None:
+                new_m.manufacturer = m.manufacturer
+            if m.product is not None:
+                new_m.product = m.product
+            if m.serial_number is not None:
+                new_m.serial_number = m.serial_number
+            _logger.debug("    Manufacturer not modified; keeping original identity")
+            return (DefinitionMessage.from_data_message(new_m), new_m)
+
         # Use profile serial number if available, otherwise use default
         if self.profile and self.profile.serial_number:
             new_m.serial_number = self.profile.serial_number
@@ -281,11 +297,62 @@ class FitEditor:
             Manufacturer.ONELAP.value,
         ]
 
-    def _should_modify_device_info(self, manufacturer: int | None) -> bool:
+    @staticmethod
+    def _build_creator_device_info(file_id: FileIdMessage) -> DeviceInfoMessage:
+        """Create a creator `DeviceInfoMessage` mirroring the (rewritten) file_id.
+
+        Used when the source file has no device_info for the recording device,
+        so Garmin Connect has a device to display for the activity.
+        """
+        dev = DeviceInfoMessage()
+        dev.timestamp = file_id.time_created
+        dev.device_index = 0  # creator
+        dev.source_type = 5  # local
+        if file_id.manufacturer is not None:
+            dev.manufacturer = file_id.manufacturer
+        if file_id.product is not None:
+            dev.product = file_id.product  # type: ignore
+        if file_id.serial_number is not None:
+            dev.serial_number = file_id.serial_number
+        return dev
+
+    @staticmethod
+    def _rebuild_device_info(message: DeviceInfoMessage) -> DeviceInfoMessage:
+        """Copy a parsed `DeviceInfoMessage` into a fresh one with growable fields.
+
+        Fields absent from the source definition (such as `product`) cannot be
+        assigned on a parsed message, so this creates a new message and copies
+        every populated field across. Fields that cannot be copied are skipped.
+        """
+        new_m = DeviceInfoMessage()
+        new_m.developer_fields = deepcopy(message.developer_fields)
+        for field in message.fields:
+            if not field.encoded_values or all(v is None for v in field.encoded_values):
+                continue
+            new_field = new_m.get_field(field.field_id)
+            if new_field is None:
+                continue
+            try:
+                for idx, value in enumerate(field.encoded_values):
+                    new_field.set_encoded_value(idx, value, check_validity=False)
+            except Exception:  # pragma: no cover
+                _logger.debug(f"    Could not copy field {field.name}; skipping")
+        return new_m
+
+    @staticmethod
+    def _is_external_device(message: DeviceInfoMessage) -> bool:
+        """Explicit non-local sources describe connected devices, not the recorder."""
+        return message.source_type not in (None, SourceType.LOCAL.value)
+
+    def _should_modify_device_info(
+        self, manufacturer: int | None, device_index: int | None
+    ) -> bool:
         """Check if device info should be modified to Garmin Edge 830.
 
         Similar to _should_modify_manufacturer but also includes blank/unknown
         manufacturers (code 0) for `DeviceInfoMessage` records.
+        Only the creator (index 0) or an unindexed device is eligible;
+        indexed peripheral sensors must retain their original identity.
 
         Args:
             manufacturer: The manufacturer code from the `DeviceInfoMessage`, or `None`.
@@ -299,7 +366,10 @@ class FitEditor:
             [`_should_modify_manufacturer()`][fit_file_faker.fit_editor.FitEditor._should_modify_manufacturer]
             plus manufacturer code 0 (blank/unknown).
         """
-        if manufacturer is None:
+        if manufacturer is None or device_index not in (
+            None,
+            DeviceIndex.CREATOR.value,
+        ):
             return False
         return manufacturer in [
             Manufacturer.DEVELOPMENT.value,
@@ -473,6 +543,27 @@ class FitEditor:
                     is_onelap = True
                 break
 
+        # Pre-scan for a device_info record describing the recording device.
+        # Some apps (e.g. TrainerDay) write a Garmin file_id but no device_info
+        # at all, and Garmin Connect then shows no device for the activity.
+        has_creator_device_info = False
+        skipped_device_type_zero_in_scan = False
+        for record in fit_file.records:
+            device = record.message
+            if not isinstance(device, DeviceInfoMessage):
+                continue
+            if device.device_type == 0:
+                skipped_device_type_zero_in_scan = True
+                continue
+            if self._is_external_device(device):
+                continue
+            index = device.device_index
+            if skipped_device_type_zero_in_scan and index is not None:
+                index -= 1
+            if index in (None, DeviceIndex.CREATOR.value):
+                has_creator_device_info = True
+                break
+
         # Loop through records, find the ones we need to change, and modify the values
         for i, record in enumerate(fit_file.records):
             message = record.message
@@ -501,6 +592,14 @@ class FitEditor:
                             DefinitionMessage.from_data_message(creator_message)
                         )
                         builder.add(creator_message)
+                    if not has_creator_device_info:
+                        creator_device = self._build_creator_device_info(message)
+                        _logger.debug(
+                            "No creator device_info found; adding one from file_id"
+                        )
+                        self.print_message("    New DeviceInfo", creator_device)
+                        builder.add(DefinitionMessage.from_data_message(creator_device))
+                        builder.add(creator_device)
                     continue
 
             if message.global_id == FileCreatorMessage.ID:
@@ -528,7 +627,11 @@ class FitEditor:
                         )
                         message.device_index = message.device_index - 1
 
-                    if self._should_modify_device_info(message.manufacturer):
+                    if not self._is_external_device(
+                        message
+                    ) and self._should_modify_device_info(
+                        message.manufacturer, message.device_index
+                    ):
                         _logger.debug("    Modifying values")
                         _logger.debug(f"garmin_product: {message.garmin_product}")
                         _logger.debug(f"product: {message.product}")
@@ -537,9 +640,36 @@ class FitEditor:
                         if self.profile:
                             target_manufacturer = self.profile.manufacturer
                             target_device = self.profile.device
+                            target_serial_number = (
+                                self.profile.serial_number or 1234567890
+                            )
                         else:
                             target_manufacturer = Manufacturer.GARMIN.value
                             target_device = GarminProduct.EDGE_830.value
+                            target_serial_number = 1234567890
+
+                        # Some devices (e.g. COROS DURA) write device_info with a
+                        # manufacturer and product_name but no numeric product field.
+                        # A parsed message's fields are bound to the source definition
+                        # and cannot grow, so rebuild the record with a fresh
+                        # definition that includes product.
+                        if message.product is None and message.garmin_product is None:
+                            _logger.debug("    No product field; rebuilding record")
+                            message = self._rebuild_device_info(message)
+                            message.product = target_device  # type: ignore
+                            # Such records also tend to omit the fields Garmin Connect
+                            # uses to identify the recording device. Fill them in so
+                            # this record is recognised as the creator.
+                            if message.device_index is None:
+                                message.device_index = 0  # creator
+                            if message.source_type is None:
+                                message.source_type = 5  # local
+                            if message.serial_number is None:
+                                message.serial_number = (
+                                    self.profile.serial_number
+                                    if self.profile and self.profile.serial_number
+                                    else 1234567890
+                                )
 
                         # have not seen this set explicitly in testing, but probable good to set regardless
                         if message.garmin_product is not None:  # pragma: no cover
@@ -548,6 +678,24 @@ class FitEditor:
                             message.product = target_device  # type: ignore
                         if message.manufacturer is not None:
                             message.manufacturer = target_manufacturer
+                        serial_field = message.get_field_by_name("serial_number")
+                        serial_field.growable = True
+                        message.definition_message = None
+                        message.serial_number = target_serial_number
+                        if (
+                            message.product is not None
+                            and self.profile
+                            and self.profile.software_version is not None
+                        ):
+                            field = message.get_field_by_name("software_version")
+                            if field is not None:
+                                field.growable = True
+                                # forces fit-tool to regenerate the definition,
+                                # otherwise software_version is not included
+                                message.definition_message = None
+                                message.software_version = (
+                                    self.profile.software_version / 100.0
+                                )
                         message.product_name = ""
                         self.print_message(f"    New Record: {i}", message)
 
