@@ -66,6 +66,7 @@ echo "Epix Pro 51mm (4314): $(get_firmware 'http://gpsinformation.net/allory/tes
 
 echo ""
 echo "# Forerunner devices"
+echo "Forerunner 970 (4565): $(get_firmware 'http://gpsinformation.net/allory/test/garfeat_forerunner_970.htm' 'forerunner970')"
 echo "Forerunner 965 (4315): $(get_firmware 'http://gpsinformation.net/allory/test/garfeat_forerunner_965.htm' 'forerunner965')"
 echo "Forerunner 955 (4024): $(get_firmware 'http://gpsinformation.net/allory/test/garfeat_forerunner_955.htm' 'forerunner955')"
 echo "Forerunner 265 Large (4257): $(get_firmware 'http://gpsinformation.net/allory/test/garfeat_forerunner_265.htm' 'forerunner265')"
