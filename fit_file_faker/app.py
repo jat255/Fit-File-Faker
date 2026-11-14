@@ -77,6 +77,13 @@ c = Console()
 FILES_UPLOADED_NAME = Path(".uploaded_files.json")
 
 
+def _file_identity(path: Path) -> dict[str, str]:
+    """Identify a source file by name and content."""
+    with path.open("rb") as fh:
+        digest = sha256(fh.read()).hexdigest()
+    return {"name": path.name, "hash": digest}
+
+
 def get_token_dir(profile_name: str) -> Path:
     """Get profile-specific token directory for credential isolation.
 
@@ -233,14 +240,15 @@ class NewFileEventHandler(PatternMatchingEventHandler):
                             with uploaded_list.open("r") as f:
                                 uploaded_files = json.load(f)
 
-                        file = {
-                            "name": source_file.name,
-                            "hash": sha256(
-                                open(dir.joinpath(source_file.name), "rb").read()
-                            ).hexdigest(),
-                        }
-                        if file not in uploaded_files:
-                            uploaded_files.append(file)
+                        file = _file_identity(source_file)
+                        # A modification event represents a new upload; replace a
+                        # legacy name-only entry with the observed content hash.
+                        legacy_entry = source_file.name in uploaded_files
+                        if legacy_entry:
+                            uploaded_files.remove(source_file.name)
+                        if file not in uploaded_files or legacy_entry:
+                            if file not in uploaded_files:
+                                uploaded_files.append(file)
                             with uploaded_list.open("w") as f:
                                 json.dump(uploaded_files, f, indent=2)
                             _logger.debug(
@@ -389,13 +397,20 @@ def upload_all(
     files = [i.replace(str(dir), "").strip("/").strip("\\") for i in files]
     # remove files matching what we may have already processed
     files = [i for i in files if not i.endswith("_modified.fit")]
-    # append file hash for each file
-    files = [
-        {"name": i, "hash": sha256(open(dir.joinpath(i), "rb").read()).hexdigest()}
-        for i in files
-    ]
-    # remove files found in the "already uploaded" list
-    files = [i for i in files if i not in uploaded_files]
+    # Convert legacy names to the current content hash, preserving the old
+    # assumption that files present at upgrade time were already uploaded.
+    identities = [_file_identity(dir / name) for name in files]
+    migrated = False
+    for identity in identities:
+        if identity["name"] in uploaded_files:
+            uploaded_files.remove(identity["name"])
+            if identity not in uploaded_files:
+                uploaded_files.append(identity)
+            migrated = True
+    if migrated and not dryrun:
+        with files_uploaded.open("w") as f:
+            json.dump(uploaded_files, f, indent=2)
+    files = [identity for identity in identities if identity not in uploaded_files]
 
     _logger.info(f"Found {len(files)} files to edit/upload")
     _logger.debug(f"Files to upload: {files}")
@@ -422,13 +437,13 @@ def upload_all(
                         original_path=Path(f["name"]),
                         dryrun=dryrun,
                     )
-                    _logger.debug(
-                        f'Adding "{f["name"]}" with hash "{f["hash"]}" to "uploaded_files"'
-                    )
         else:
             _logger.info(
                 "Preinitialize was requested, so just marking as uploaded (not actually processing)"
             )
+        _logger.debug(
+            f'Adding "{f["name"]}" with hash "{f["hash"]}" to "uploaded_files"'
+        )
         uploaded_files.append(f)
 
     if not dryrun:

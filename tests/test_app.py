@@ -164,6 +164,28 @@ class TestUploadAllFunction:
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
+    def test_legacy_entry_migrates_then_detects_replacement(
+        self, mock_upload, mock_editor, temp_dir
+    ):
+        source = temp_dir / "MyNewActivity-5.7.fit"
+        source.write_bytes(b"old activity")
+        tracking = temp_dir / FILES_UPLOADED_NAME
+        tracking.write_text(json.dumps([source.name]))
+        profile = MagicMock()
+        mock_editor.edit_fit.return_value = temp_dir / "output.fit"
+
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_not_called()
+        assert isinstance(json.loads(tracking.read_text())[0], dict)
+
+        source.write_bytes(b"new activity")
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_called_once()
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_called_once()
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
     def test_upload_all_new_files(
         self, mock_upload, mock_fit_editor, temp_dir, tpv_fit_file
     ):
@@ -195,7 +217,7 @@ class TestUploadAllFunction:
 
         with uploaded_list.open("r") as f:
             uploaded = json.load(f)
-        assert "test_activity.fit" in uploaded
+        assert any(entry["name"] == "test_activity.fit" for entry in uploaded)
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -274,8 +296,8 @@ class TestUploadAllFunction:
         with uploaded_list.open("r") as f:
             uploaded = json.load(f)
 
-        assert "test1.fit" in uploaded
-        assert "test2.fit" in uploaded
+        assert any(entry["name"] == "test1.fit" for entry in uploaded)
+        assert any(entry["name"] == "test2.fit" for entry in uploaded)
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -556,7 +578,9 @@ class TestNewFileEventHandler:
         with uploaded_list.open("r") as f:
             uploaded_files = json.load(f)
 
-        assert "MyNewActivity-12345.fit" in uploaded_files
+        assert any(
+            entry["name"] == "MyNewActivity-12345.fit" for entry in uploaded_files
+        )
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -596,7 +620,16 @@ class TestNewFileEventHandler:
         with uploaded_list.open("r") as f:
             uploaded_files = json.load(f)
 
-        assert uploaded_files.count("MyNewActivity-12345.fit") == 1
+        assert (
+            len(
+                [
+                    entry
+                    for entry in uploaded_files
+                    if entry["name"] == "MyNewActivity-12345.fit"
+                ]
+            )
+            == 1
+        )
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -668,7 +701,9 @@ class TestNewFileEventHandler:
 
         with uploaded_list.open("r") as f:
             uploaded_files = json.load(f)
-        assert "MyNewActivity-5.5.0.fit" in uploaded_files
+        assert any(
+            entry["name"] == "MyNewActivity-5.5.0.fit" for entry in uploaded_files
+        )
 
         # Now create the new version file (MyWhoosh 5.6.0)
         new_file = temp_dir / "MyNewActivity-5.6.0.fit"
@@ -696,8 +731,12 @@ class TestNewFileEventHandler:
         with uploaded_list.open("r") as f:
             uploaded_files = json.load(f)
 
-        assert "MyNewActivity-5.5.0.fit" in uploaded_files
-        assert "MyNewActivity-5.6.0.fit" in uploaded_files
+        assert any(
+            entry["name"] == "MyNewActivity-5.5.0.fit" for entry in uploaded_files
+        )
+        assert any(
+            entry["name"] == "MyNewActivity-5.6.0.fit" for entry in uploaded_files
+        )
         # Should only have these two files (no duplicates)
         assert len(uploaded_files) == 2
 
