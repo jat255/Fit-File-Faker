@@ -655,7 +655,8 @@ class TestDeviceInfoWithoutProduct:
         assert dev.serial_number == 1234567890
         assert dev.device_index == 0
 
-    def test_device_info_without_index_marked_as_creator(self, tmp_path):
+    @pytest.mark.parametrize("source_type", [None, 5])
+    def test_device_info_without_index_marked_as_creator(self, tmp_path, source_type):
         """COROS DURA device_info also omits device_index/serial/source_type."""
         from datetime import datetime
 
@@ -676,6 +677,8 @@ class TestDeviceInfoWithoutProduct:
         dev.timestamp = ts
         dev.manufacturer = Manufacturer.COROS.value
         dev.product_name = "COROS DURA"
+        if source_type is not None:
+            dev.source_type = source_type
         builder.add(dev)
         src = tmp_path / "dura_min.fit"
         out = tmp_path / "dura_min_modified.fit"
@@ -825,3 +828,54 @@ def test_rebuild_device_info_skips_unknown_standard_fields():
     assert rebuilt.get_field(254) is None
     assert rebuilt.manufacturer == dev.manufacturer
     assert rebuilt.product_name == dev.product_name
+
+
+@pytest.mark.parametrize("source_type", [0, 1, 2, 3, 4])
+@pytest.mark.parametrize(
+    "manufacturer", [Manufacturer.GARMIN.value, Manufacturer.WAHOO_FITNESS.value]
+)
+def test_unindexed_external_sensor_does_not_replace_creator(
+    tmp_path, source_type, manufacturer
+):
+    """External sensor records neither suppress a creator nor get rewritten."""
+    from fit_file_faker.vendor.fit_tool.fit_file_builder import FitFileBuilder
+
+    builder = FitFileBuilder(auto_define=True)
+    fid = FileIdMessage()
+    fid.type = 4
+    fid.manufacturer = Manufacturer.GARMIN.value
+    fid.product = GarminProduct.EDGE_530.value
+    fid.serial_number = 3987112345
+    fid.time_created = 1785916974000
+    builder.add(fid)
+    sensor = DeviceInfoMessage()
+    sensor.source_type = source_type
+    sensor.device_type = 120
+    sensor.manufacturer = manufacturer
+    sensor.product = 42
+    sensor.serial_number = 1234567891
+    sensor.product_name = "Heart rate sensor"
+    builder.add(sensor)
+    src, out = tmp_path / "sensor_only.fit", tmp_path / "modified.fit"
+    builder.build().to_file(str(src))
+
+    FitEditor().edit_fit(src, output=out)
+    devices = [
+        r.message
+        for r in FitFile.from_file(str(out)).records
+        if isinstance(r.message, DeviceInfoMessage)
+    ]
+    assert len(devices) == 2
+    creator, preserved_sensor = devices
+    assert creator.device_index == 0
+    assert creator.source_type == 5
+    assert creator.manufacturer == fid.manufacturer
+    assert creator.product == fid.product
+    assert creator.serial_number == fid.serial_number
+    assert preserved_sensor.device_index is None
+    assert preserved_sensor.source_type == source_type
+    assert preserved_sensor.device_type == 120
+    assert preserved_sensor.manufacturer == manufacturer
+    assert preserved_sensor.product == 42
+    assert preserved_sensor.serial_number == 1234567891
+    assert preserved_sensor.product_name == "Heart rate sensor"

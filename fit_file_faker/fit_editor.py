@@ -44,6 +44,7 @@ from fit_file_faker.vendor.fit_tool.profile.profile_type import (
     GarminProduct,
     Manufacturer,
     DeviceIndex,
+    SourceType,
 )
 
 _logger = logging.getLogger("garmin")
@@ -338,6 +339,11 @@ class FitEditor:
                 _logger.debug(f"    Could not copy field {field.name}; skipping")
         return new_m
 
+    @staticmethod
+    def _is_external_device(message: DeviceInfoMessage) -> bool:
+        """Explicit non-local sources describe connected devices, not the recorder."""
+        return message.source_type not in (None, SourceType.LOCAL.value)
+
     def _should_modify_device_info(
         self, manufacturer: int | None, device_index: int | None
     ) -> bool:
@@ -549,6 +555,8 @@ class FitEditor:
             if device.device_type == 0:
                 skipped_device_type_zero_in_scan = True
                 continue
+            if self._is_external_device(device):
+                continue
             index = device.device_index
             if skipped_device_type_zero_in_scan and index is not None:
                 index -= 1
@@ -619,7 +627,9 @@ class FitEditor:
                         )
                         message.device_index = message.device_index - 1
 
-                    if self._should_modify_device_info(
+                    if not self._is_external_device(
+                        message
+                    ) and self._should_modify_device_info(
                         message.manufacturer, message.device_index
                     ):
                         _logger.debug("    Modifying values")
