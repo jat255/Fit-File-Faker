@@ -225,7 +225,11 @@ class NewFileEventHandler(PatternMatchingEventHandler):
                     ) as fp,
                 ):
                     snapshot = Path(snapshot_dir) / source_file.name
-                    snapshot.write_bytes(source_file.read_bytes())
+                    try:
+                        snapshot.write_bytes(source_file.read_bytes())
+                    except OSError as exc:
+                        _logger.warning(f'Cannot read "{source_file}": {exc}')
+                        return
                     file = _file_identity(snapshot)
                     fit_editor.set_profile(self.profile)
                     output = fit_editor.edit_fit(snapshot, output=Path(fp.name))
@@ -397,54 +401,62 @@ def upload_all(
             json.dump(uploaded_files, f, indent=2)
     _logger.debug(f"Found the following already uploaded files: {uploaded_files}")
 
-    # glob all .fit files in the current directory
-    files = [str(i) for i in dir.glob("*.fit", case_sensitive=False)]
-    # strip any leading/trailing slashes from filenames
-    files = [i.replace(str(dir), "").strip("/").strip("\\") for i in files]
-    # remove files matching what we may have already processed
-    files = [i for i in files if not i.endswith("_modified.fit")]
-    # Legacy names have no content hash, so retry them once. Garmin treats
-    # already-uploaded activities as duplicates; this avoids losing replacements.
-    identities = [_file_identity(dir / name) for name in files]
-    files = [identity for identity in identities if identity not in uploaded_files]
+    files = [
+        path
+        for path in dir.glob("*.fit", case_sensitive=False)
+        if not path.name.endswith("_modified.fit")
+    ]
+    _logger.info(f"Found {len(files)} FIT files to check")
 
-    _logger.info(f"Found {len(files)} files to edit/upload")
-    _logger.debug(f"Files to upload: {files}")
+    for source in files:
+        try:
+            contents = source.read_bytes()
+        except OSError as exc:
+            _logger.warning(f'Cannot read "{source}": {exc}')
+            continue
+        identity = {"name": source.name, "hash": sha256(contents).hexdigest()}
+        if source.name in uploaded_files:
+            _logger.warning(
+                f'Legacy tracking for "{source.name}" has no content hash. '
+                "The current file will be treated as already processed; "
+                "if it replaced an earlier activity, upload it manually."
+            )
+            uploaded_files.remove(source.name)
+            if identity not in uploaded_files:
+                uploaded_files.append(identity)
+            continue
+        if identity in uploaded_files:
+            continue
 
-    if not files:
-        return
-
-    for f in files:
-        _logger.info(f'Processing "{f["name"]}"')  # type: ignore
-
-        f_path = dir.joinpath(f["name"])
-
+        _logger.info(f'Processing "{source.name}"')
         if not preinitialize:
-            with NamedTemporaryFile(
-                delete=True, delete_on_close=False, suffix=".fit"
-            ) as fp:
+            with (
+                TemporaryDirectory() as snapshot_dir,
+                NamedTemporaryFile(
+                    delete=True, delete_on_close=False, suffix=".fit"
+                ) as fp,
+            ):
+                snapshot = Path(snapshot_dir) / source.name
+                snapshot.write_bytes(contents)
                 fit_editor.set_profile(profile)
-                output = fit_editor.edit_fit(f_path, output=Path(fp.name))
-                if output:
-                    _logger.info("Uploading modified file to Garmin Connect")
-                    upload(
-                        output,
-                        profile=profile,
-                        original_path=Path(f["name"]),
-                        dryrun=dryrun,
-                    )
-                else:
+                output = fit_editor.edit_fit(snapshot, output=Path(fp.name))
+                if not output:
                     continue
+                _logger.info("Uploading modified file to Garmin Connect")
+                upload(
+                    output,
+                    profile=profile,
+                    original_path=Path(source.name),
+                    dryrun=dryrun,
+                )
         else:
             _logger.info(
                 "Preinitialize was requested, so just marking as uploaded (not actually processing)"
             )
         _logger.debug(
-            f'Adding "{f["name"]}" with hash "{f["hash"]}" to "uploaded_files"'
+            f'Adding "{source.name}" with hash "{identity["hash"]}" to "uploaded_files"'
         )
-        if f["name"] in uploaded_files:
-            uploaded_files.remove(f["name"])
-        uploaded_files.append(f)
+        uploaded_files.append(identity)
 
     if not dryrun:
         with files_uploaded.open("w") as f:

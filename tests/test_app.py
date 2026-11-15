@@ -164,75 +164,71 @@ class TestUploadAllFunction:
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
-    def test_legacy_entry_retries_current_content_once(
-        self, mock_upload, mock_editor, temp_dir
+    def test_legacy_preinitialized_file_is_not_uploaded(
+        self, mock_upload, mock_editor, temp_dir, caplog
     ):
         source = temp_dir / "MyNewActivity-5.7.fit"
-        source.write_bytes(b"replacement activity")
+        source.write_bytes(b"current activity")
         tracking = temp_dir / FILES_UPLOADED_NAME
         tracking.write_text(json.dumps([source.name]))
         profile = MagicMock()
         mock_editor.edit_fit.return_value = temp_dir / "output.fit"
 
         upload_all(temp_dir, profile=profile)
-        mock_upload.assert_called_once()
+        mock_upload.assert_not_called()
         assert isinstance(json.loads(tracking.read_text())[0], dict)
+        assert "manual" in caplog.text.lower()
+        source.write_bytes(b"later activity")
         upload_all(temp_dir, profile=profile)
         mock_upload.assert_called_once()
-
-        source.write_bytes(b"another activity")
-        upload_all(temp_dir, profile=profile)
-        assert mock_upload.call_count == 2
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
-    def test_legacy_entry_is_retained_when_edit_fails(
+    def test_batch_tracks_same_snapshot_it_edits(
         self, mock_upload, mock_editor, temp_dir
     ):
-        source = temp_dir / "MyNewActivity-5.7.fit"
-        source.write_bytes(b"activity")
-        tracking = temp_dir / FILES_UPLOADED_NAME
-        tracking.write_text(json.dumps([source.name]))
-        mock_editor.edit_fit.return_value = None
+        from hashlib import sha256
 
+        source = temp_dir / "activity.fit"
+        source.write_bytes(b"activity A")
+        observed = []
+
+        def edit(path, output):
+            source.write_bytes(b"activity B")
+            observed.append(path.read_bytes())
+            return output
+
+        mock_editor.edit_fit.side_effect = edit
         upload_all(temp_dir, profile=MagicMock())
-        mock_upload.assert_not_called()
-        assert json.loads(tracking.read_text()) == [source.name]
+        entries = json.loads((temp_dir / FILES_UPLOADED_NAME).read_text())
+        assert observed == [b"activity A"]
+        assert entries == [
+            {"name": source.name, "hash": sha256(b"activity A").hexdigest()}
+        ]
+        upload_all(temp_dir, profile=MagicMock())
+        assert observed == [b"activity A", b"activity B"]
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
-    def test_upload_all_new_files(
-        self, mock_upload, mock_fit_editor, temp_dir, tpv_fit_file
+    def test_batch_continues_after_source_disappears(
+        self, mock_upload, mock_editor, temp_dir
     ):
-        """Test uploading all new files in a directory."""
-        # Copy test file to temp directory
-        import shutil
+        bad = temp_dir / "gone.fit"
+        good = temp_dir / "good.fit"
+        bad.write_bytes(b"gone")
+        good.write_bytes(b"good")
+        original = Path.read_bytes
 
-        test_file = temp_dir / "test_activity.fit"
-        shutil.copy(tpv_fit_file, test_file)
+        def read(path):
+            if path == bad:
+                raise FileNotFoundError("gone")
+            return original(path)
 
-        # Mock fit_editor to return a path
-        mock_fit_editor.edit_fit.return_value = temp_dir / "test_activity_modified.fit"
-
-        # Create mock profile
-        mock_profile = MagicMock()
-        mock_profile.garmin_username = "test@example.com"
-        mock_profile.garmin_password = "testpass"
-
-        # Run upload_all
-        upload_all(temp_dir, profile=mock_profile, dryrun=False)
-
-        # Verify edit and upload were called
-        assert mock_fit_editor.edit_fit.called
-        assert mock_upload.called
-
-        # Verify uploaded files list was created
-        uploaded_list = temp_dir / FILES_UPLOADED_NAME
-        assert uploaded_list.exists()
-
-        with uploaded_list.open("r") as f:
-            uploaded = json.load(f)
-        assert any(entry["name"] == "test_activity.fit" for entry in uploaded)
+        mock_editor.edit_fit.return_value = temp_dir / "output.fit"
+        with patch.object(Path, "read_bytes", read):
+            upload_all(temp_dir, profile=MagicMock())
+        mock_upload.assert_called_once()
+        assert mock_upload.call_args.kwargs["original_path"] == Path("good.fit")
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -259,9 +255,8 @@ class TestUploadAllFunction:
         # Run upload_all
         upload_all(temp_dir, profile=mock_profile, dryrun=False)
 
-        # Legacy names cannot establish which content was uploaded, so retry once.
-        mock_fit_editor.edit_fit.assert_called_once()
-        mock_upload.assert_called_once()
+        mock_fit_editor.edit_fit.assert_not_called()
+        mock_upload.assert_not_called()
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -379,6 +374,23 @@ class TestNewFileEventHandler:
 
         # Should call upload_all with the parent directory and profile
         mock_upload_all.assert_called_once_with(temp_dir, profile=mock_profile)
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_modified_file_deleted_during_delay_is_ignored(
+        self, mock_sleep, mock_upload, mock_editor, temp_dir
+    ):
+        from watchdog.events import FileModifiedEvent
+
+        source = temp_dir / "MyNewActivity-5.7.fit"
+        source.touch()
+        mock_sleep.side_effect = lambda _: source.unlink()
+        NewFileEventHandler(profile=MagicMock()).on_modified(
+            FileModifiedEvent(str(source))
+        )
+        mock_editor.edit_fit.assert_not_called()
+        mock_upload.assert_not_called()
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -776,7 +788,7 @@ class TestNewFileEventHandler:
 
         # Verify only the new file was processed
         call_args = mock_fit_editor.edit_fit.call_args
-        assert call_args[0][0] == new_file
+        assert call_args[0][0].name == new_file.name
 
         # Verify the new file is now in the tracking list
         with uploaded_list.open("r") as f:

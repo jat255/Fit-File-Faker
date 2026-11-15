@@ -422,7 +422,7 @@ The `--upload-all` option will search for all FIT files either in the directory 
 
 The edited files are written to temporary files and discarded after upload. The tracking file stores each filename and a hash of its contents, so a new activity that replaces a file with the same name can still be uploaded.
 
-When upgrading from a version that tracked filenames only, the first upload-all run retries the current files listed in the old tracking file. This avoids missing activities that replaced an older file before the upgrade. Garmin Connect may report activities that were already uploaded as duplicates.
+When upgrading from a version that tracked filenames only, the first upload-all run treats files listed in the old tracking file as already processed and records their current content hashes. This preserves exclusions made with `--preinitialize`. If a new activity replaced a tracked file before the upgrade, upload that activity manually; later replacements are detected automatically.
 
 #### Monitor Mode
 
