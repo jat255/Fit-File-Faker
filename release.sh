@@ -40,7 +40,12 @@ validate_changelog_commit_subjects() {
     fi
 
     local invalid_commits=""
-    while IFS=$'\t' read -r commit_hash subject; do
+    while IFS=$'\t' read -r commit_hash parents subject; do
+        # GitHub's merge subjects are omitted from the changelog; validate the
+        # individual commits instead. Require multiple parents, not just a title.
+        if [[ "$parents" == *" "* ]] && [[ "$subject" =~ ^Merge\ pull\ request\ \#[0-9]+\ from\  ]]; then
+            continue
+        fi
         if [[ "$subject" =~ ^docs:\ update\ changelog ]] ||
            [[ "$subject" =~ ^chore:\ bump\ version ]] ||
            [[ "$subject" =~ ^chore\(release\):\ prepare\ for ]] ||
@@ -55,7 +60,7 @@ validate_changelog_commit_subjects() {
         fi
 
         invalid_commits+="${commit_hash} ${subject}"$'\n'
-    done < <(git log --format='%h%x09%s' "${previous_tag}..HEAD")
+    done < <(git log --format='%h%x09%P%x09%s' "${previous_tag}..HEAD")
 
     if [ -n "$invalid_commits" ]; then
         echo -e "${RED}Error: The following commits do not match git-cliff commit parser requirements:${NC}" >&2
