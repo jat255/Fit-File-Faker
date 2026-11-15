@@ -164,38 +164,93 @@ class TestUploadAllFunction:
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
-    def test_upload_all_new_files(
-        self, mock_upload, mock_fit_editor, temp_dir, tpv_fit_file
+    def test_failed_edit_is_not_tracked_and_can_be_retried(
+        self, mock_upload, mock_editor, temp_dir
     ):
-        """Test uploading all new files in a directory."""
-        # Copy test file to temp directory
-        import shutil
+        source = temp_dir / "activity.fit"
+        source.write_bytes(b"activity")
+        profile = MagicMock()
+        mock_editor.edit_fit.return_value = None
 
-        test_file = temp_dir / "test_activity.fit"
-        shutil.copy(tpv_fit_file, test_file)
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_not_called()
+        assert json.loads((temp_dir / FILES_UPLOADED_NAME).read_text()) == []
 
-        # Mock fit_editor to return a path
-        mock_fit_editor.edit_fit.return_value = temp_dir / "test_activity_modified.fit"
+        mock_editor.edit_fit.return_value = temp_dir / "output.fit"
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_called_once()
+        assert (
+            json.loads((temp_dir / FILES_UPLOADED_NAME).read_text())[0]["name"]
+            == source.name
+        )
 
-        # Create mock profile
-        mock_profile = MagicMock()
-        mock_profile.garmin_username = "test@example.com"
-        mock_profile.garmin_password = "testpass"
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    def test_legacy_preinitialized_file_is_not_uploaded(
+        self, mock_upload, mock_editor, temp_dir, caplog
+    ):
+        source = temp_dir / "MyNewActivity-5.7.fit"
+        source.write_bytes(b"current activity")
+        tracking = temp_dir / FILES_UPLOADED_NAME
+        tracking.write_text(json.dumps([source.name]))
+        profile = MagicMock()
+        mock_editor.edit_fit.return_value = temp_dir / "output.fit"
 
-        # Run upload_all
-        upload_all(temp_dir, profile=mock_profile, dryrun=False)
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_not_called()
+        assert isinstance(json.loads(tracking.read_text())[0], dict)
+        assert "manual" in caplog.text.lower()
+        source.write_bytes(b"later activity")
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_called_once()
 
-        # Verify edit and upload were called
-        assert mock_fit_editor.edit_fit.called
-        assert mock_upload.called
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    def test_batch_tracks_same_snapshot_it_edits(
+        self, mock_upload, mock_editor, temp_dir
+    ):
+        from hashlib import sha256
 
-        # Verify uploaded files list was created
-        uploaded_list = temp_dir / FILES_UPLOADED_NAME
-        assert uploaded_list.exists()
+        source = temp_dir / "activity.fit"
+        source.write_bytes(b"activity A")
+        observed = []
 
-        with uploaded_list.open("r") as f:
-            uploaded = json.load(f)
-        assert "test_activity.fit" in uploaded
+        def edit(path, output):
+            source.write_bytes(b"activity B")
+            observed.append(path.read_bytes())
+            return output
+
+        mock_editor.edit_fit.side_effect = edit
+        upload_all(temp_dir, profile=MagicMock())
+        entries = json.loads((temp_dir / FILES_UPLOADED_NAME).read_text())
+        assert observed == [b"activity A"]
+        assert entries == [
+            {"name": source.name, "hash": sha256(b"activity A").hexdigest()}
+        ]
+        upload_all(temp_dir, profile=MagicMock())
+        assert observed == [b"activity A", b"activity B"]
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    def test_batch_continues_after_source_disappears(
+        self, mock_upload, mock_editor, temp_dir
+    ):
+        bad = temp_dir / "gone.fit"
+        good = temp_dir / "good.fit"
+        bad.write_bytes(b"gone")
+        good.write_bytes(b"good")
+        original = Path.read_bytes
+
+        def read(path):
+            if path == bad:
+                raise FileNotFoundError("gone")
+            return original(path)
+
+        mock_editor.edit_fit.return_value = temp_dir / "output.fit"
+        with patch.object(Path, "read_bytes", read):
+            upload_all(temp_dir, profile=MagicMock())
+        mock_upload.assert_called_once()
+        assert mock_upload.call_args.kwargs["original_path"] == Path("good.fit")
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -222,7 +277,6 @@ class TestUploadAllFunction:
         # Run upload_all
         upload_all(temp_dir, profile=mock_profile, dryrun=False)
 
-        # Should NOT process the file
         mock_fit_editor.edit_fit.assert_not_called()
         mock_upload.assert_not_called()
 
@@ -274,8 +328,8 @@ class TestUploadAllFunction:
         with uploaded_list.open("r") as f:
             uploaded = json.load(f)
 
-        assert "test1.fit" in uploaded
-        assert "test2.fit" in uploaded
+        assert any(entry["name"] == "test1.fit" for entry in uploaded)
+        assert any(entry["name"] == "test2.fit" for entry in uploaded)
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -346,6 +400,59 @@ class TestNewFileEventHandler:
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
     @patch("fit_file_faker.app.time.sleep")
+    def test_modified_file_deleted_during_delay_is_ignored(
+        self, mock_sleep, mock_upload, mock_editor, temp_dir
+    ):
+        from watchdog.events import FileModifiedEvent
+
+        source = temp_dir / "MyNewActivity-5.7.fit"
+        source.touch()
+        mock_sleep.side_effect = lambda _: source.unlink()
+        NewFileEventHandler(profile=MagicMock()).on_modified(
+            FileModifiedEvent(str(source))
+        )
+        mock_editor.edit_fit.assert_not_called()
+        mock_upload.assert_not_called()
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
+    def test_modified_file_replaced_during_upload_remains_pending(
+        self, mock_sleep, mock_upload, mock_editor, temp_dir
+    ):
+        from hashlib import sha256
+        from watchdog.events import FileModifiedEvent
+
+        source = temp_dir / "MyNewActivity-5.7.fit"
+        source.write_bytes(b"activity A")
+        profile = MagicMock()
+        handler = NewFileEventHandler(profile=profile, dryrun=False)
+        observed = []
+
+        def edit(path, output):
+            observed.append(path.read_bytes())
+            return output
+
+        mock_editor.edit_fit.side_effect = edit
+        mock_upload.side_effect = lambda *args, **kwargs: source.write_bytes(
+            b"activity B"
+        )
+        handler.on_modified(FileModifiedEvent(str(source)))
+        entries = json.loads((temp_dir / FILES_UPLOADED_NAME).read_text())
+        assert observed == [b"activity A"]
+        assert entries == [
+            {"name": source.name, "hash": sha256(b"activity A").hexdigest()}
+        ]
+
+        mock_upload.side_effect = None
+        mock_upload.reset_mock()
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_called_once()
+        assert observed[-1] == b"activity B"
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
     def test_on_modified_processes_mywhoosh_file(
         self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
     ):
@@ -375,7 +482,7 @@ class TestNewFileEventHandler:
         # Should call edit_fit with the modified file
         mock_fit_editor.edit_fit.assert_called_once()
         call_args = mock_fit_editor.edit_fit.call_args
-        assert call_args[0][0] == test_file
+        assert isinstance(call_args[0][0], Path)
         # output parameter should be a Path object (the temp file path)
         assert isinstance(call_args.kwargs["output"], Path)
 
@@ -556,7 +663,9 @@ class TestNewFileEventHandler:
         with uploaded_list.open("r") as f:
             uploaded_files = json.load(f)
 
-        assert "MyNewActivity-12345.fit" in uploaded_files
+        assert any(
+            entry["name"] == "MyNewActivity-12345.fit" for entry in uploaded_files
+        )
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -596,7 +705,16 @@ class TestNewFileEventHandler:
         with uploaded_list.open("r") as f:
             uploaded_files = json.load(f)
 
-        assert uploaded_files.count("MyNewActivity-12345.fit") == 1
+        assert (
+            len(
+                [
+                    entry
+                    for entry in uploaded_files
+                    if entry["name"] == "MyNewActivity-12345.fit"
+                ]
+            )
+            == 1
+        )
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -668,7 +786,9 @@ class TestNewFileEventHandler:
 
         with uploaded_list.open("r") as f:
             uploaded_files = json.load(f)
-        assert "MyNewActivity-5.5.0.fit" in uploaded_files
+        assert any(
+            entry["name"] == "MyNewActivity-5.5.0.fit" for entry in uploaded_files
+        )
 
         # Now create the new version file (MyWhoosh 5.6.0)
         new_file = temp_dir / "MyNewActivity-5.6.0.fit"
@@ -690,14 +810,18 @@ class TestNewFileEventHandler:
 
         # Verify only the new file was processed
         call_args = mock_fit_editor.edit_fit.call_args
-        assert call_args[0][0] == new_file
+        assert call_args[0][0].name == new_file.name
 
         # Verify the new file is now in the tracking list
         with uploaded_list.open("r") as f:
             uploaded_files = json.load(f)
 
-        assert "MyNewActivity-5.5.0.fit" in uploaded_files
-        assert "MyNewActivity-5.6.0.fit" in uploaded_files
+        assert any(
+            entry["name"] == "MyNewActivity-5.5.0.fit" for entry in uploaded_files
+        )
+        assert any(
+            entry["name"] == "MyNewActivity-5.6.0.fit" for entry in uploaded_files
+        )
         # Should only have these two files (no duplicates)
         assert len(uploaded_files) == 2
 

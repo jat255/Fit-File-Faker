@@ -207,8 +207,8 @@ class TestMultiProfileWorkflows:
 
             with uploaded_list.open("r") as f:
                 uploaded = json.load(f)
-            assert "activity1.fit" in uploaded
-            assert "activity2.fit" in uploaded
+            assert any(entry["name"] == "activity1.fit" for entry in uploaded)
+            assert any(entry["name"] == "activity2.fit" for entry in uploaded)
 
     def test_profile_update_workflow(self):
         """Test updating profile credentials and path."""
