@@ -164,6 +164,28 @@ class TestUploadAllFunction:
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
+    def test_failed_edit_is_not_tracked_and_can_be_retried(
+        self, mock_upload, mock_editor, temp_dir
+    ):
+        source = temp_dir / "activity.fit"
+        source.write_bytes(b"activity")
+        profile = MagicMock()
+        mock_editor.edit_fit.return_value = None
+
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_not_called()
+        assert json.loads((temp_dir / FILES_UPLOADED_NAME).read_text()) == []
+
+        mock_editor.edit_fit.return_value = temp_dir / "output.fit"
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_called_once()
+        assert (
+            json.loads((temp_dir / FILES_UPLOADED_NAME).read_text())[0]["name"]
+            == source.name
+        )
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
     def test_legacy_preinitialized_file_is_not_uploaded(
         self, mock_upload, mock_editor, temp_dir, caplog
     ):
