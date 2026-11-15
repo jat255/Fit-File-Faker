@@ -5,6 +5,68 @@ All notable changes to FIT File Faker are documented here.
 This changelog is automatically generated from git commit messages using [git-cliff](https://git-cliff.org/).
 See our [release history](https://github.com/jat255/Fit-File-Faker/releases) on GitHub for downloadable releases.
 
+## [2.3.0](https://github.com/jat255/fit-file-faker/releases/tag/v2.3.0) - (2026-11-15)
+
+### Features
+
+- review release notes before publication ([004d03a](https://github.com/jat255/Fit-File-Faker/commit/004d03a42650b43d4f2e714cdb11eff2b5eb08ca))
+
+- complete and monitor GitHub releases ([971b423](https://github.com/jat255/Fit-File-Faker/commit/971b42365770eb097dd35a9d4774bc831272ae97))
+
+- add release workflow skill ([e878fc0](https://github.com/jat255/Fit-File-Faker/commit/e878fc09dc9fdd8a385cc7d2ac09156eb07f2d99))
+
+- add object with name and hash to .uploaded_files.json ([4d33848](https://github.com/jat255/Fit-File-Faker/commit/4d33848e61c2ffebe29cdd135c5586c62024ae3d))
+
+- support Forerunner 970 device simulation ([#91](https://github.com/jat255/fit-file-faker/issues/91)) ([37dbef7](https://github.com/jat255/Fit-File-Faker/commit/37dbef7c81e69c6f46c741754d15fbc8517d5803))
+
+
+### Bug Fixes
+
+- allow GitHub merge commits in release validation ([edc08bf](https://github.com/jat255/Fit-File-Faker/commit/edc08bf83d751303c54d38c8f40e4a4537f8a025))
+
+- preserve upload tracking across file changes ([42cc9bb](https://github.com/jat255/Fit-File-Faker/commit/42cc9bb46d57bd973881b1762e770eeba6fbaffe))
+
+- prevent missed activities during upload tracking ([43fa499](https://github.com/jat255/Fit-File-Faker/commit/43fa499ee585c7274abfb93e5626996fc180d7cd))
+
+- preserve upload tracking across hash migration ([f39df59](https://github.com/jat255/Fit-File-Faker/commit/f39df5911da8455dbf2d9c18def2824119e8fe99))
+
+- add file hash to .uploaded_files.json ([c87ed55](https://github.com/jat255/Fit-File-Faker/commit/c87ed55e1600299dced8f5f80c14dd40d1d8322d))
+
+- exclude external sensors from creator detection ([709210c](https://github.com/jat255/Fit-File-Faker/commit/709210c53ce326ee7a1d04bc643e282011638785))
+
+- retain custom device data in the identity stack ([f827d57](https://github.com/jat255/Fit-File-Faker/commit/f827d57a217cffec5d0ba3fd0f511bc49501edb2))
+
+- preserve developer fields when rebuilding device metadata ([18b8cfa](https://github.com/jat255/Fit-File-Faker/commit/18b8cfa06079c83cf6703627ce95693320415e6e))
+
+- stack Garmin identity preservation without duplicate creators ([71140cf](https://github.com/jat255/Fit-File-Faker/commit/71140cfde5e30ea5745622de68f7b354db40270f))
+
+- integrate consistent creator identity into COROS device rebuilds ([9af742d](https://github.com/jat255/Fit-File-Faker/commit/9af742dc817b8c2c650bf5eca5cfd0e9ae9f9033))
+
+- fill missing creator serial numbers and verify device identity ([54100bb](https://github.com/jat255/Fit-File-Faker/commit/54100bb6f1f00715d67af6779a52334241ad7764))
+
+- write serial number and software version to device_info if needed ([50d1292](https://github.com/jat255/Fit-File-Faker/commit/50d1292ae29ae904b4ad4088539a199494212424))
+
+- mark rebuilt device_info as creator device ([#80](https://github.com/jat255/fit-file-faker/issues/80)) ([e64239d](https://github.com/jat255/Fit-File-Faker/commit/e64239d7fe56f10d695fe1bf6b69c5ce7ed3a065))
+
+- set product on device_info records that lack it ([#80](https://github.com/jat255/fit-file-faker/issues/80)) ([4054f98](https://github.com/jat255/Fit-File-Faker/commit/4054f983a1b734dbd8e66072192898cd96ed1b3c))
+
+- keep device identity for unmodified manufacturers and add missing creator device_info ([490ce39](https://github.com/jat255/Fit-File-Faker/commit/490ce39c85de8bb446e8db45a341b6d236800bc2))
+
+
+### Testing
+
+- cover retry after batch edit failure ([e660982](https://github.com/jat255/Fit-File-Faker/commit/e66098297d56b2029cbcdf36f6fa054070091fba))
+
+- cover Fenix 8 device identity for Karoo files ([fae4d1a](https://github.com/jat255/Fit-File-Faker/commit/fae4d1a67f4c624030b1a69853ef701fba5d5fd0))
+
+- propagate device rebuild coverage through stack ([b24157d](https://github.com/jat255/Fit-File-Faker/commit/b24157d84f2d8bfca5298f7e119df52e3108a5ef))
+
+- cover unknown fields in device info rebuilds ([44ecf53](https://github.com/jat255/Fit-File-Faker/commit/44ecf539fdbb6c22ec50d329bbf2d0aad585544f))
+
+- skip release script test without usable bash ([df45da1](https://github.com/jat255/Fit-File-Faker/commit/df45da184d01fd087b7dbf630f6cce0760146799))
+
+- run release script through bash ([f9a5611](https://github.com/jat255/Fit-File-Faker/commit/f9a56119c33fdd1cdc7db6bd4f90078440eee32f))
+
 ## [2.2.1](https://github.com/jat255/fit-file-faker/releases/tag/v2.2.1) - (2026-07-10)
 
 ### Bug Fixes
