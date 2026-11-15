@@ -420,7 +420,9 @@ The `--upload-all` option will search for all FIT files either in the directory 
 2. Edit them
 3. Upload each to Garmin Connect
 
-The edited files will be written into a temporary file and discarded when the script finishes running, and the filenames will be stored into a JSON file so they are skipped the next time the script is run.
+The edited files are written to temporary files and discarded after upload. The tracking file stores each filename and a hash of its contents, so a new activity that replaces a file with the same name can still be uploaded.
+
+When upgrading from a version that tracked filenames only, the first upload-all run retries the current files listed in the old tracking file. This avoids missing activities that replaced an older file before the upgrade. Garmin Connect may report activities that were already uploaded as duplicates.
 
 #### Monitor Mode
 

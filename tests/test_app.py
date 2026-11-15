@@ -164,25 +164,40 @@ class TestUploadAllFunction:
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
-    def test_legacy_entry_migrates_then_detects_replacement(
+    def test_legacy_entry_retries_current_content_once(
         self, mock_upload, mock_editor, temp_dir
     ):
         source = temp_dir / "MyNewActivity-5.7.fit"
-        source.write_bytes(b"old activity")
+        source.write_bytes(b"replacement activity")
         tracking = temp_dir / FILES_UPLOADED_NAME
         tracking.write_text(json.dumps([source.name]))
         profile = MagicMock()
         mock_editor.edit_fit.return_value = temp_dir / "output.fit"
 
         upload_all(temp_dir, profile=profile)
-        mock_upload.assert_not_called()
+        mock_upload.assert_called_once()
         assert isinstance(json.loads(tracking.read_text())[0], dict)
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_called_once()
 
-        source.write_bytes(b"new activity")
+        source.write_bytes(b"another activity")
         upload_all(temp_dir, profile=profile)
-        mock_upload.assert_called_once()
-        upload_all(temp_dir, profile=profile)
-        mock_upload.assert_called_once()
+        assert mock_upload.call_count == 2
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    def test_legacy_entry_is_retained_when_edit_fails(
+        self, mock_upload, mock_editor, temp_dir
+    ):
+        source = temp_dir / "MyNewActivity-5.7.fit"
+        source.write_bytes(b"activity")
+        tracking = temp_dir / FILES_UPLOADED_NAME
+        tracking.write_text(json.dumps([source.name]))
+        mock_editor.edit_fit.return_value = None
+
+        upload_all(temp_dir, profile=MagicMock())
+        mock_upload.assert_not_called()
+        assert json.loads(tracking.read_text()) == [source.name]
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -244,9 +259,9 @@ class TestUploadAllFunction:
         # Run upload_all
         upload_all(temp_dir, profile=mock_profile, dryrun=False)
 
-        # Should NOT process the file
-        mock_fit_editor.edit_fit.assert_not_called()
-        mock_upload.assert_not_called()
+        # Legacy names cannot establish which content was uploaded, so retry once.
+        mock_fit_editor.edit_fit.assert_called_once()
+        mock_upload.assert_called_once()
 
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
@@ -368,6 +383,42 @@ class TestNewFileEventHandler:
     @patch("fit_file_faker.app.fit_editor")
     @patch("fit_file_faker.app.upload")
     @patch("fit_file_faker.app.time.sleep")
+    def test_modified_file_replaced_during_upload_remains_pending(
+        self, mock_sleep, mock_upload, mock_editor, temp_dir
+    ):
+        from hashlib import sha256
+        from watchdog.events import FileModifiedEvent
+
+        source = temp_dir / "MyNewActivity-5.7.fit"
+        source.write_bytes(b"activity A")
+        profile = MagicMock()
+        handler = NewFileEventHandler(profile=profile, dryrun=False)
+        observed = []
+
+        def edit(path, output):
+            observed.append(path.read_bytes())
+            return output
+
+        mock_editor.edit_fit.side_effect = edit
+        mock_upload.side_effect = lambda *args, **kwargs: source.write_bytes(
+            b"activity B"
+        )
+        handler.on_modified(FileModifiedEvent(str(source)))
+        entries = json.loads((temp_dir / FILES_UPLOADED_NAME).read_text())
+        assert observed == [b"activity A"]
+        assert entries == [
+            {"name": source.name, "hash": sha256(b"activity A").hexdigest()}
+        ]
+
+        mock_upload.side_effect = None
+        mock_upload.reset_mock()
+        upload_all(temp_dir, profile=profile)
+        mock_upload.assert_called_once()
+        assert observed[-1] == b"activity B"
+
+    @patch("fit_file_faker.app.fit_editor")
+    @patch("fit_file_faker.app.upload")
+    @patch("fit_file_faker.app.time.sleep")
     def test_on_modified_processes_mywhoosh_file(
         self, mock_sleep, mock_upload, mock_fit_editor, temp_dir
     ):
@@ -397,7 +448,7 @@ class TestNewFileEventHandler:
         # Should call edit_fit with the modified file
         mock_fit_editor.edit_fit.assert_called_once()
         call_args = mock_fit_editor.edit_fit.call_args
-        assert call_args[0][0] == test_file
+        assert isinstance(call_args[0][0], Path)
         # output parameter should be a Path object (the temp file path)
         assert isinstance(call_args.kwargs["output"], Path)
 

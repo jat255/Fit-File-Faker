@@ -31,7 +31,7 @@ import sys
 import time
 from importlib.metadata import version
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Optional, cast
 from hashlib import sha256
 
@@ -216,12 +216,19 @@ class NewFileEventHandler(PatternMatchingEventHandler):
                 p = cast(str, p)
                 source_file = Path(p).absolute()
 
-                # Edit the file and upload it
-                with NamedTemporaryFile(
-                    delete=True, delete_on_close=False, suffix=".fit"
-                ) as fp:
+                # Edit and identify the same snapshot even if the source changes
+                # while the upload is in progress.
+                with (
+                    TemporaryDirectory() as snapshot_dir,
+                    NamedTemporaryFile(
+                        delete=True, delete_on_close=False, suffix=".fit"
+                    ) as fp,
+                ):
+                    snapshot = Path(snapshot_dir) / source_file.name
+                    snapshot.write_bytes(source_file.read_bytes())
+                    file = _file_identity(snapshot)
                     fit_editor.set_profile(self.profile)
-                    output = fit_editor.edit_fit(source_file, output=Path(fp.name))
+                    output = fit_editor.edit_fit(snapshot, output=Path(fp.name))
                     if output:
                         _logger.info(
                             f"Uploading modified file ({output}) to Garmin Connect"
@@ -240,7 +247,6 @@ class NewFileEventHandler(PatternMatchingEventHandler):
                             with uploaded_list.open("r") as f:
                                 uploaded_files = json.load(f)
 
-                        file = _file_identity(source_file)
                         # A modification event represents a new upload; replace a
                         # legacy name-only entry with the observed content hash.
                         legacy_entry = source_file.name in uploaded_files
@@ -397,19 +403,9 @@ def upload_all(
     files = [i.replace(str(dir), "").strip("/").strip("\\") for i in files]
     # remove files matching what we may have already processed
     files = [i for i in files if not i.endswith("_modified.fit")]
-    # Convert legacy names to the current content hash, preserving the old
-    # assumption that files present at upgrade time were already uploaded.
+    # Legacy names have no content hash, so retry them once. Garmin treats
+    # already-uploaded activities as duplicates; this avoids losing replacements.
     identities = [_file_identity(dir / name) for name in files]
-    migrated = False
-    for identity in identities:
-        if identity["name"] in uploaded_files:
-            uploaded_files.remove(identity["name"])
-            if identity not in uploaded_files:
-                uploaded_files.append(identity)
-            migrated = True
-    if migrated and not dryrun:
-        with files_uploaded.open("w") as f:
-            json.dump(uploaded_files, f, indent=2)
     files = [identity for identity in identities if identity not in uploaded_files]
 
     _logger.info(f"Found {len(files)} files to edit/upload")
@@ -437,6 +433,8 @@ def upload_all(
                         original_path=Path(f["name"]),
                         dryrun=dryrun,
                     )
+                else:
+                    continue
         else:
             _logger.info(
                 "Preinitialize was requested, so just marking as uploaded (not actually processing)"
@@ -444,6 +442,8 @@ def upload_all(
         _logger.debug(
             f'Adding "{f["name"]}" with hash "{f["hash"]}" to "uploaded_files"'
         )
+        if f["name"] in uploaded_files:
+            uploaded_files.remove(f["name"])
         uploaded_files.append(f)
 
     if not dryrun:
