@@ -142,7 +142,7 @@ class NewFileEventHandler(PatternMatchingEventHandler):
         """
         _logger.debug(f"Creating NewFileEventHandler with {dryrun=}")
         super().__init__(
-            patterns=["*.fit", "MyNewActivity-*.fit"],
+            patterns=["**/*.fit", "**/MyNewActivity-*.fit"],
             ignore_directories=True,
             case_sensitive=False,
         )

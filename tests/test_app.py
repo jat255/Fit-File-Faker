@@ -369,7 +369,7 @@ class TestNewFileEventHandler:
         mock_profile = MagicMock()
         handler = NewFileEventHandler(profile=mock_profile, dryrun=False)
 
-        assert handler.patterns == ["*.fit", "MyNewActivity-*.fit"]
+        assert handler.patterns == ["**/*.fit", "**/MyNewActivity-*.fit"]
         assert handler.ignore_directories is True
         assert handler.case_sensitive is False
 
