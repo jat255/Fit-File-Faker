@@ -89,3 +89,35 @@ def test_release_script_rejects_commit_subjects_git_cliff_will_not_render(
     assert "do not match git-cliff commit parser requirements" in result.stderr
     assert "Support Garmin MFA login and add .fit suffix" in result.stderr
     assert 'version = "2.1.5"' in (repo / "pyproject.toml").read_text()
+
+
+def test_release_script_accepts_github_merge_commits(tmp_path: Path) -> None:
+    """A GitHub merge subject must not block the conventional commits it merges."""
+    bash = require_usable_bash()
+    repo = create_release_repo(tmp_path)
+    run_git(repo, "checkout", "-b", "feature")
+    (repo / "change.txt").write_text("change\n")
+    run_git(repo, "add", "change.txt")
+    run_git(repo, "commit", "-m", "fix: include a change")
+    run_git(repo, "checkout", "main")
+    run_git(
+        repo,
+        "merge",
+        "--no-ff",
+        "feature",
+        "-m",
+        "Merge pull request #42 from user/feature",
+    )
+
+    result = subprocess.run(
+        [bash, "release.sh", "2.2.0"],
+        cwd=repo,
+        input="n\n",
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={**os.environ, "UV_CACHE_DIR": str(tmp_path / "uv-cache")},
+    )
+
+    assert "do not match git-cliff commit parser requirements" not in result.stderr
+    assert "Preparing release v2.2.0" in result.stdout

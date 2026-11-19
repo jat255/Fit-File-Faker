@@ -31,8 +31,9 @@ import sys
 import time
 from importlib.metadata import version
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Optional, cast
+from hashlib import sha256
 
 import questionary
 import semver
@@ -74,6 +75,13 @@ apply_fit_tool_patch()
 
 c = Console()
 FILES_UPLOADED_NAME = Path(".uploaded_files.json")
+
+
+def _file_identity(path: Path) -> dict[str, str]:
+    """Identify a source file by name and content."""
+    with path.open("rb") as fh:
+        digest = sha256(fh.read()).hexdigest()
+    return {"name": path.name, "hash": digest}
 
 
 def get_token_dir(profile_name: str) -> Path:
@@ -208,12 +216,23 @@ class NewFileEventHandler(PatternMatchingEventHandler):
                 p = cast(str, p)
                 source_file = Path(p).absolute()
 
-                # Edit the file and upload it
-                with NamedTemporaryFile(
-                    delete=True, delete_on_close=False, suffix=".fit"
-                ) as fp:
+                # Edit and identify the same snapshot even if the source changes
+                # while the upload is in progress.
+                with (
+                    TemporaryDirectory() as snapshot_dir,
+                    NamedTemporaryFile(
+                        delete=True, delete_on_close=False, suffix=".fit"
+                    ) as fp,
+                ):
+                    snapshot = Path(snapshot_dir) / source_file.name
+                    try:
+                        snapshot.write_bytes(source_file.read_bytes())
+                    except OSError as exc:
+                        _logger.warning(f'Cannot read "{source_file}": {exc}')
+                        return
+                    file = _file_identity(snapshot)
                     fit_editor.set_profile(self.profile)
-                    output = fit_editor.edit_fit(source_file, output=Path(fp.name))
+                    output = fit_editor.edit_fit(snapshot, output=Path(fp.name))
                     if output:
                         _logger.info(
                             f"Uploading modified file ({output}) to Garmin Connect"
@@ -232,12 +251,19 @@ class NewFileEventHandler(PatternMatchingEventHandler):
                             with uploaded_list.open("r") as f:
                                 uploaded_files = json.load(f)
 
-                        filename = source_file.name
-                        if filename not in uploaded_files:
-                            uploaded_files.append(filename)
+                        # A modification event represents a new upload; replace a
+                        # legacy name-only entry with the observed content hash.
+                        legacy_entry = source_file.name in uploaded_files
+                        if legacy_entry:
+                            uploaded_files.remove(source_file.name)
+                        if file not in uploaded_files or legacy_entry:
+                            if file not in uploaded_files:
+                                uploaded_files.append(file)
                             with uploaded_list.open("w") as f:
                                 json.dump(uploaded_files, f, indent=2)
-                            _logger.debug(f'Added "{filename}" to uploaded files list')
+                            _logger.debug(
+                                f'Added "{file["name"]}" with hash "{file["hash"]}" to uploaded files list'
+                            )
             else:
                 _logger.warning(
                     "Found modified file, but not processing because dryrun was requested"
@@ -375,41 +401,62 @@ def upload_all(
             json.dump(uploaded_files, f, indent=2)
     _logger.debug(f"Found the following already uploaded files: {uploaded_files}")
 
-    # glob all .fit files in the current directory
-    files = [str(i) for i in dir.glob("*.fit", case_sensitive=False)]
-    # strip any leading/trailing slashes from filenames
-    files = [i.replace(str(dir), "").strip("/").strip("\\") for i in files]
-    # remove files matching what we may have already processed
-    files = [i for i in files if not i.endswith("_modified.fit")]
-    # remove files found in the "already uploaded" list
-    files = [i for i in files if i not in uploaded_files]
+    files = [
+        path
+        for path in dir.glob("*.fit", case_sensitive=False)
+        if not path.name.endswith("_modified.fit")
+    ]
+    _logger.info(f"Found {len(files)} FIT files to check")
 
-    _logger.info(f"Found {len(files)} files to edit/upload")
-    _logger.debug(f"Files to upload: {files}")
+    for source in files:
+        try:
+            contents = source.read_bytes()
+        except OSError as exc:
+            _logger.warning(f'Cannot read "{source}": {exc}')
+            continue
+        identity = {"name": source.name, "hash": sha256(contents).hexdigest()}
+        if source.name in uploaded_files:
+            _logger.warning(
+                f'Legacy tracking for "{source.name}" has no content hash. '
+                "The current file will be treated as already processed; "
+                "if it replaced an earlier activity, upload it manually."
+            )
+            uploaded_files.remove(source.name)
+            if identity not in uploaded_files:
+                uploaded_files.append(identity)
+            continue
+        if identity in uploaded_files:
+            continue
 
-    if not files:
-        return
-
-    for f in files:
-        _logger.info(f'Processing "{f}"')  # type: ignore
-
+        _logger.info(f'Processing "{source.name}"')
         if not preinitialize:
-            with NamedTemporaryFile(
-                delete=True, delete_on_close=False, suffix=".fit"
-            ) as fp:
+            with (
+                TemporaryDirectory() as snapshot_dir,
+                NamedTemporaryFile(
+                    delete=True, delete_on_close=False, suffix=".fit"
+                ) as fp,
+            ):
+                snapshot = Path(snapshot_dir) / source.name
+                snapshot.write_bytes(contents)
                 fit_editor.set_profile(profile)
-                output = fit_editor.edit_fit(dir.joinpath(f), output=Path(fp.name))
-                if output:
-                    _logger.info("Uploading modified file to Garmin Connect")
-                    upload(
-                        output, profile=profile, original_path=Path(f), dryrun=dryrun
-                    )
-                    _logger.debug(f'Adding "{f}" to "uploaded_files"')
+                output = fit_editor.edit_fit(snapshot, output=Path(fp.name))
+                if not output:
+                    continue
+                _logger.info("Uploading modified file to Garmin Connect")
+                upload(
+                    output,
+                    profile=profile,
+                    original_path=Path(source.name),
+                    dryrun=dryrun,
+                )
         else:
             _logger.info(
                 "Preinitialize was requested, so just marking as uploaded (not actually processing)"
             )
-        uploaded_files.append(f)
+        _logger.debug(
+            f'Adding "{source.name}" with hash "{identity["hash"]}" to "uploaded_files"'
+        )
+        uploaded_files.append(identity)
 
     if not dryrun:
         with files_uploaded.open("w") as f:
